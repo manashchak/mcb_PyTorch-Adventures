@@ -280,7 +280,7 @@ class Tensor:
         """
         
         if not isinstance(val, Tensor):
-            val = Tensor(val)
+            val = Tensor(val)        
         
         ### Use numpy Matmul Operation ###
         output = self.data @ val.data
@@ -566,8 +566,8 @@ class Tensor:
             return input
         elif isinstance(input, Tensor):
             return input.data
-        else:
-            return np.array(input)
+        else:            
+            return np.array(input)    
 
     def _add_child(self, child_tensor):
 
