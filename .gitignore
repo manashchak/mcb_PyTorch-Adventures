@@ -1,8 +1,12 @@
 # Ignore PyTorch Model Weights and Logs
 *.bin 
 *.pkl
+*.pt
 work_dir/
 wandb/
+
+# Ignore Data
+data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
