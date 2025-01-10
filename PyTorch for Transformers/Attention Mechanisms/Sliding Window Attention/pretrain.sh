@@ -1,8 +1,8 @@
 accelerate launch pretrain_roberta.py \
-    --experiment_name "RoBERTa_Pretraining_localattention" \
-    --working_directory "<PATH_TO_WORKDIR>" \
+    --experiment_name "test" \
+    --working_directory "work_dir" \
     --hf_model_name "FacebookAI/roberta-base" \
-    --path_to_prepped_data "<PATH_TO_DATA>" \
+    --path_to_prepped_data "/mnt/datadrive/data/prepped_data/roberta_data_long" \
     --context_length 2048 \
     --masking_probability 0.15 \
     --num_workers 24 \
