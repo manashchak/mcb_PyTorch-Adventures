@@ -45,10 +45,10 @@ There are a few other datasets that we will use but are inconsistent to automati
 - [**Leveraging Pre-Trained Models for Transfer Learning**](PyTorch%20Basics/Basics%20of%20Transfer%20Learning/) &nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1839491569533223011)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://www.youtube.com/watch?v=c6VTUx0EdqM)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KYCINwxq-y8QOMCRylsxDaP9RCUHz-bV?usp=sharing)
 
 
-- [**Intro to PyTorch for Vision: Digging into Convolutions**](PyTorch%20for%20Computer%20Vision/Intro%20to%20Vision/) &nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1BE-y1876znMeijFu4AX4qcZdt-fs8o7a?usp=sharing)
+- [**Intro to PyTorch for Vision: Digging into Convolutions**](PyTorch%20for%20Computer%20Vision/Intro%20to%20Vision/) &nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1882126373633872065)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://youtu.be/WoIxtSBYyYA)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1BE-y1876znMeijFu4AX4qcZdt-fs8o7a?usp=sharing)
 
 
-- [**Going Deeper with Residual Connections**](PyTorch%20for%20Computer%20Vision/ResNet/) &nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1OPnOApHCcZFFWkw-zfhNvfyQeswQxgea?usp=sharing)
+- [**Going Deeper with Residual Connections**](PyTorch%20for%20Computer%20Vision/ResNet/) &nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1882629212869099967)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://youtu.be/_AR-UEBP-Us)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1OPnOApHCcZFFWkw-zfhNvfyQeswQxgea?usp=sharing)
 
 
 - [**Digging into the LSTM: Sequence Classification**](PyTorch%20for%20NLP/LSTM/LSTM%20IMDB%20Classification/) &nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1c98opjQt1w-HTp10U1myjSWU9acDsaV4?usp=sharing)
@@ -116,7 +116,7 @@ There are a few other datasets that we will use but are inconsistent to automati
 - **Linear Attention**
 
 ## Sequence to Sequence Modeling ##
-- **Seq2Seq for Language Translation**
+- [**Seq2Seq for Language Translation**](PyTorch%20for%20NLP/Seq2Seq%20for%20Neural%20Machine%20Translation/)
 - **CNN/RNN for Image Captioning**
 - **Attention is All You Need for Language Translation**
 
