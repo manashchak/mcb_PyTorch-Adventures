@@ -51,10 +51,10 @@ There are a few other datasets that we will use but are inconsistent to automati
 - [**The Curse of Backpropagation: Going Deeper with Residual Connections & Implementing ResNet**](PyTorch%20for%20Computer%20Vision/ResNet/) &nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1883133149317829104)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://www.youtube.com/watch?v=TqIU9K8nNhs)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1OPnOApHCcZFFWkw-zfhNvfyQeswQxgea?usp=sharing)
 
 
-- [**Digging into the Sequence Modeling: Sequence Classification with Recurrence**](PyTorch%20for%20NLP/LSTM/LSTM%20IMDB%20Classification/) &nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1883135474476208152)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://www.youtube.com/watch?v=UBjmWHX8xlI)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1c98opjQt1w-HTp10U1myjSWU9acDsaV4?usp=sharing)
+- [**Digging into the Sequence Modeling: Sequence Classification with Recurrence**](PyTorch%20for%20NLP/Recurrent%20Neural%20Networks/IMDB%20Classification/) &nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1883135474476208152)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://www.youtube.com/watch?v=UBjmWHX8xlI)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1c98opjQt1w-HTp10U1myjSWU9acDsaV4?usp=sharing)
 
 
-- [**Lets Write a Story: Recurrence for Text Generation**](PyTorch%20for%20NLP/LSTM/LSTM%20Harry%20Potter%20Generation/) &nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KO4JeIHRiKxiRJdK7gY-B9bZGfDSvCt_?usp=sharing)
+- [**Lets Write a Story: Recurrence for Text Generation**](PyTorch%20for%20NLP/Recurrent%20Neural%20Networks/Harry%20Potter%20Generation/) &nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KO4JeIHRiKxiRJdK7gY-B9bZGfDSvCt_?usp=sharing)
 
 - [**Distributed Training with Huggingface 🤗 Accelerate**](PyTorch%20Basics/Huggingface%20Accelerate/)
 
