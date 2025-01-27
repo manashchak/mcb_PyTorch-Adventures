@@ -1,145 +1,155 @@
 import torch
 import torch.nn as nn
-from VisionTransformer import PatchEmbed, TransformerBlock
+from VisionTransformer import PatchEmbed, EncoderBlock
+from utils import sincos_embeddings, random_masking
+from dataclasses import dataclass
 
-"""
-Work in Progress! Reference code here:  https://github.com/facebookresearch/mae/blob/main/models_mae.py
-"""
-class MaskedAutoencoder(nn.Module):
-    def __init__(self, img_size=224, patch_size=16, in_chans=3, encoder_embed_dim=768,
-                 encoder_depth=12, encoder_num_heads=12, decoder_embed_dim=512, decoder_depth=8,
-                 decoder_num_heads=16):
+@dataclass
+class MAEConfig:
 
-        super(MaskedAutoencoder, self).__init__()
+    ### Input Image Config ###
+    img_size: int = 224
+    patch_size: int = 16
+    in_chans: int = 3
 
-        self.patch_size = patch_size
+    ### MAE Encoder Config ###
+    encoder_embed_dim: int = 768
+    encoder_depth: int = 12
+    encoder_num_heads: int = 12
+    encoder_attn_p: float = 0.0
+    encoder_mlp_p: float = 0.0
+    encoder_proj_p: float = 0.0
+    encoder_mlp_ratio: int = 4
 
-        ### Define Encoder Parts ###
-        self.patch_embed = PatchEmbed(img_size=img_size,
-                                      patch_size=patch_size,
-                                      in_chans=in_chans,
-                                      embed_dim=encoder_embed_dim)
-        self.enc_cls_token = nn.Parameter(torch.zeros(1,1,encoder_embed_dim))
-        self.enc_pos_embed = nn.Parameter(torch.zeros(1, self.patch_embed.n_patches + 1, encoder_embed_dim))
+    ### MAE Decoder Config ###
+    decoder_embed_dim: int = 512
+    decoder_depth: int =  8
+    decoder_num_heads: int = 16
+    decoder_attn_p: float = 0.0
+    decoder_mlp_p: float = 0.0
+    decoder_proj_p: float = 0.0
+    decoder_mlp_ratio: int = 4
+    
+    ### MAE Settings ###
+    fused_attention: bool = True
+    learnable_positional_encodings: bool = True
 
+
+class VITMAEEncoder(nn.Module):
+    def __init__(self, config):
+        
+        super(VITMAEEncoder, self).__init__()
+
+        self.config = config
+
+        ### Define Encoder ###
+        self.patch_embed = PatchEmbed(img_size=config.img_size, 
+                                      patch_size=config.patch_size, 
+                                      in_chans=config.in_chans, 
+                                      embed_dim=config.encoder_embed_dim)
+        
+        ### CLS Token and SinCos Positional Embeddings ###
+        self.enc_cls_token = nn.Parameter(torch.zeros(1,1,config.encoder_embed_dim))
+        self.enc_pos_embed = sincos_embeddings(num_tokens=self.patch_embed.num_patches+1,
+                                               embed_dim=config.encoder_embed_dim,  
+                                               requires_grad=config.learnable_positional_encodings)
+        
         self.encoder_blocks = nn.ModuleList(
             [
-                TransformerBlock(embed_dim=encoder_embed_dim,
-                                 num_heads=encoder_num_heads,
-                                 efficient=True)
-                for _ in range(encoder_depth)
+                EncoderBlock(embed_dim=config.encoder_embed_dim,
+                             num_heads=config.encoder_num_heads, 
+                             mlp_ratio=config.encoder_mlp_ratio, 
+                             proj_p=config.encoder_proj_p, 
+                             attn_p=config.encoder_attn_p, 
+                             mlp_p=config.encoder_mlp_p, 
+                             fused_attention=config.fused_attention)
+
+                for _ in range(config.encoder_depth)
             ]
         )
-        self.enc_norm = nn.LayerNorm(encoder_embed_dim)
 
+        self.encoder_layer_norm = nn.LayerNorm(config.encoder_embed_dim)
+    
 
-        ### Map Encoder Embed Dim to Decoder Embed Dim
-        self.enc2dec_mapping = nn.Linear(encoder_embed_dim, decoder_embed_dim)
+    def forward(self, x, mask_ratio=0.0):
+        
+        batch_size, channels, height, width = x.shape 
 
-        ### Define Decoder Parts ###
-        self.mask_token = nn.Parameter(torch.zeros(1,1,decoder_embed_dim))
+        ### Patch Embedding ###
+        x = self.patch_embed(x)
+        
+        ### Add Position Embedding without CLS token ###
+        x = x + self.enc_pos_embed[:, 1:, :]
+        
+        ### Random Masking ###
+        if mask_ratio > 0.0:
 
-        self.dec_pos_embed = nn.Parameter(torch.zeros(1, self.patch_embed.n_patches + 1, decoder_embed_dim))
+            x, mask, restore_idx = random_masking(x, mask_ratio=mask_ratio)
+
+        ### Add Position Information and Concatenate on CLS Token ###
+        cls_token  = self.enc_cls_token + self.enc_pos_embed[:, :1, :]
+
+        ### Expand to Batch Dimension on CLS Token and Concat ###
+        cls_token = cls_token.expand(batch_size, -1, -1)
+        x = torch.cat((cls_token, x), dim=1)
+        
+        ### Pass through Transformer Blocks ###
+        for block in self.encoder_blocks:
+            x = block(x)
+
+        ### Normalize ###
+        x = self.encoder_layer_norm(x)
+
+        return x, mask, restore_idx
+
+class VITMAEDecoder(nn.Module):
+    def __init__(self, config, num_patches):
+        super(VITMAEDecoder, self).__init__()
+
+        self.config = config 
+        self.num_patched = num_patches
+
+        ### Linear Layer to Project from Encoder to Decoder Embed Dims ###
+        self.encoder2decoder_embbedding_proj = nn.Linear(config.encoder_embed_dim, 
+                                                         config.decoder_embed_dim)
+
+        ### Mask Token PlaceHolder (Same as RoBERTa Implementation) ###
+        self.mask_token = nn.Parameter(torch.zeros(1,1,config.decoder_embed_dim))
+        
+        ### CLS Token and SinCos Positional Embeddings ###
+        self.dec_cls_token = nn.Parameter(torch.zeros(1,1,config.encoder_embed_dim))
+        self.dec_pos_embed = sincos_embeddings(num_tokens=num_patches+1,
+                                               embed_dim=config.encoder_embed_dim,  
+                                               requires_grad=config.learnable_positional_encodings)
 
         self.decoder_blocks = nn.ModuleList(
             [
-                TransformerBlock(embed_dim=decoder_embed_dim,
-                                 num_heads=decoder_num_heads,
-                                 efficient=True)
-                for _ in range(decoder_depth)
+                EncoderBlock(embed_dim=config.decoder_embed_dim,
+                             num_heads=config.decoder_num_heads, 
+                             mlp_ratio=config.decoder_mlp_ratio, 
+                             proj_p=config.decoder_proj_p, 
+                             attn_p=config.decoder_attn_p, 
+                             mlp_p=config.decoder_mlp_p, 
+                             fused_attention=config.fused_attention)
+
+                for _ in range(config.encoder_depth)
             ]
         )
 
-        self.dec_norm = nn.LayerNorm(decoder_embed_dim)
+        self.decoder_layer_norm = nn.LayerNorm(config.encoder_embed_dim)
 
-        ### Output Decoder to Prediction Size
-        self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans)
+    def forward(self, x, restore_idx):
 
-    def patchify(self, imgs):
-        h = w = imgs.shape[2] // self.patch_size
-        x = imgs.reshape(imgs.shape[0], 3, h, self.patch_size, w, self.patch_size)
-        x = x.permute(0, 2, 4, 3, 5, 1)
-        x = x.reshape(imgs.shape[0], h*w, self.patch_size**2*3)
-        return x
+        x = self.encoder2decoder_embbedding_proj(x)
+        
 
 
-    def random_masking(self, x, mask_ratio):
-        batch, seq_len, embed_dim = x.shape
-        len_keep = int(seq_len * (1 - mask_ratio))
-        noise = torch.rand(batch, seq_len)
+if __name__ == "__main__":
 
-        # Sort Noise per sample
-        ids_shuffle = torch.argsort(noise, dim=1)
-        ids_restore = torch.argsort(ids_shuffle, dim=1)
-
-        ids_keep = ids_shuffle[:, :len_keep]
-
-
-        x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1,1,embed_dim))
-        mask = torch.ones([batch, seq_len])
-        mask[:, :len_keep] = 0 # 0 is keep, 1 is remove
-
-        mask = torch.gather(mask, dim=1, index=ids_restore)
-
-        return x_masked, mask, ids_restore
-
-    def forward_enc(self, x, mask_ratio):
-        x = self.patch_embed(x)
-
-        ### Add once without CLS token ###
-        x = x + self.enc_pos_embed[:, 1, :]
-
-        x, mask, ids_restore = self.random_masking(x, mask_ratio)
-
-        cls_token = self.enc_cls_token + self.enc_pos_embed[:, :1, :]
-        cls_token = cls_token.expand(x.shape[0], -1, -1)
-        x = torch.cat((cls_token, x), dim=1)
-
-        for blk in self.encoder_blocks:
-            x = blk(x)
-
-        x = self.enc_norm(x)
-        return x, mask, ids_restore
-
-    def forward_dec(self, x, ids_restore):
-        x = self.enc2dec_mapping(x)
-        mask_token = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
-        x_ = torch.cat([x[:, 1:, :], mask_token], dim=1)
-        x_ = torch.gather(x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1,1,x.shape[-1]))
-        x = torch.cat([x[:, :1, :], x_], dim=1)
-
-        x = x + self.dec_pos_embed
-
-        for blk in self.decoder_blocks:
-            x = blk(x)
-
-        x = self.dec_norm(x)
-
-        x = self.decoder_pred(x)
-
-        x = x[:, 1:, :]
-        return x
-
-    def forward_loss(self, imgs, preds, mask):
-        target = self.patchify(imgs)
-        loss = (preds - target) ** 2
-        loss = loss.mean(dim=-1)
-        loss = (loss * mask).sum() / mask.sum()
-        return loss
-
-
-    def forward(self, x, mask_ratio=0.75):
-        latent, mask, ids_restore = self.forward_enc(x, mask_ratio)
-        pred = self.forward_dec(latent, ids_restore)
-        loss = self.forward_loss(x, pred, mask)
-        return loss, pred, mask
-
-
-
-
-mae = MaskedAutoencoder()
-rand = torch.rand(2, 3, 224, 224)
-loss, pred, mask = mae(rand)
-
-
-
+    rand = torch.randn(4,3,224,224)
+    mae_config = MAEConfig()
+    model = VITMAEEncoder(mae_config)
+    out, mask, restore_idx = model(rand, mask_ratio=0.75)
+    print(out.shape)
+    print(mask.shape)
+    print(restore_idx.shape)
