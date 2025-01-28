@@ -8,9 +8,9 @@ accelerate launch pretrain_mae.py \
     --epochs 800 \
     --warmup_epochs 40 \
     --save_checkpoint_interval 10 \
-    --per_gpu_batch_size 256 \
-    --gradient_accumulation_steps 1 \
-    --learning_rate 1.5e-4 \
+    --per_gpu_batch_size 2048 \
+    --gradient_accumulation_steps 4 \
+    --base_learning_rate 1.5e-4 \
     --weight_decay 0.05 \
     --max_grad_norm 1.0 \
     --img_size 224 \

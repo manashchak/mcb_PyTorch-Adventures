@@ -61,8 +61,8 @@ def parse_args():
                         help="Number of Gradient Accumulation Steps for Training", 
                         default=1, 
                         type=int)
-    parser.add_argument("--learning_rate", 
-                        help="Starting Learning Rate for Cosine Scheduler Learning Rate", 
+    parser.add_argument("--base_learning_rate", 
+                        help="Effective LR will be base_learning_rate * total_batch_size / 256", 
                         default=1.5e-4,
                         type=float)
     parser.add_argument("--weight_decay", 
@@ -161,9 +161,18 @@ accelerator = Accelerator(project_dir=path_to_experiment,
 if args.log_wandb:
     experiment_config = {"epochs": args.epochs,
                         "effective_batch_size": args.per_gpu_batch_size*accelerator.num_processes, 
-                        "learning_rate": args.learning_rate,
-                        "warmup_epochs": args.warmup_epochs,
-                        "custom_weight_init": args.custom_weight_init}
+                        "base_learning_rate": args.base_learning_rate,
+                        "warmup_epochs": args.warmup_epochs, 
+                        "img_size": args.img_size,
+                        "in_channels": args.input_channels,
+                        "encoder_embed_dim": args.encoder_embed_dim, 
+                        "encoder_depth": args.encoder_depth, 
+                        "encoder_num_heads": args.encoder_num_heads, 
+                        "encoder_mlp_ratio": args.encoder_mlp_ratio, 
+                        "decoder_embed_dim": args.decoder_embed_dim,
+                        "decoder_depth": args.decoder_depth, 
+                        "decoder_num_heads": args.decoder_num_heads, 
+                        "decoder_mlp_ratio": args.decoder_mlp_ratio}
     
     accelerator.init_trackers(args.experiment_name, config=experiment_config, init_kwargs={"wandb": {"name": args.wandb_run_name}})
 
@@ -191,7 +200,7 @@ IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
 train_transforms = Compose([
-    RandomResizedCrop(args.input_size, scale=(0.2, 1.0), interpolation=InterpolationMode.BICUBIC),  
+    RandomResizedCrop(args.img_size, scale=(0.2, 1.0), interpolation=InterpolationMode.BICUBIC),  
     RandomHorizontalFlip(),   
     ToTensor(),  
     Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)           
@@ -225,6 +234,10 @@ testloader = DataLoader(testset,
                         num_workers=args.num_workers, 
                         pin_memory=True)
 
+### Compute Effective Learning Rate using Linear ###
+effective_learning_rate = args.base_learning_rate * args.per_gpu_batch_size*accelerator.num_processes / 256
+accelerator.print("Batch Adjusted Max Learning Rate:", effective_learning_rate)
+
 ### Define Optimizer (And seperate out weight decay and no weight decay parameters) ###
 if (not args.bias_weight_decay) or (not args.norm_weight_decay):
     accelerator.print("Disabling Weight Decay on Some Parameters")
@@ -249,10 +262,10 @@ if (not args.bias_weight_decay) or (not args.norm_weight_decay):
         {"params": weight_decay_params, "weight_decay": args.weight_decay},
         {"params": no_weight_decay_params, "weight_decay": 0.0}
     ]
-    optimizer = torch.optim.AdamW(optimizer_group, lr=args.learning_rate, betas=(0.9,0.95))
+    optimizer = torch.optim.AdamW(optimizer_group, lr=effective_learning_rate, betas=(0.9,0.95), fused=True)
 
 else:
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay, betas=(0.9,0.95))
+    optimizer = torch.optim.AdamW(model.parameters(), lr=effective_learning_rate, weight_decay=args.weight_decay, betas=(0.9,0.95), fused=True)
 
 ### Define Scheduler (Compute number of training steps from epochs and adjust for num_gpus) ###
 num_training_steps = len(trainloader) * args.epochs // args.gradient_accumulation_steps
