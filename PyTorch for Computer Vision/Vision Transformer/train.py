@@ -6,7 +6,6 @@ import argparse
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torchvision import datasets
-from torchvision.models import resnet18
 from accelerate import Accelerator
 from transformers import get_cosine_schedule_with_warmup
 
