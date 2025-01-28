@@ -214,7 +214,7 @@ if (not args.bias_weight_decay) or (not args.norm_weight_decay):
         {"params": weight_decay_params, "weight_decay": args.weight_decay},
         {"params": no_weight_decay_params, "weight_decay": 0.0}
     ]
-    optimizer = torch.optim.AdamW(optimizer_group, lr=args.learning_rate, weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(optimizer_group, lr=args.learning_rate)
 
 else:
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
