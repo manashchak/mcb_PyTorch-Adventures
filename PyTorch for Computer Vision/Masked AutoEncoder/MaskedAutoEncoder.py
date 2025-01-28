@@ -107,7 +107,7 @@ class VITMAEDecoder(nn.Module):
         super(VITMAEDecoder, self).__init__()
 
         self.config = config 
-        self.num_patched = num_patches
+        self.num_patches = num_patches
 
         ### Linear Layer to Project from Encoder to Decoder Embed Dims ###
         self.encoder2decoder_embbedding_proj = nn.Linear(config.encoder_embed_dim, 
@@ -116,10 +116,9 @@ class VITMAEDecoder(nn.Module):
         ### Mask Token PlaceHolder (Same as RoBERTa Implementation) ###
         self.mask_token = nn.Parameter(torch.zeros(1,1,config.decoder_embed_dim))
         
-        ### CLS Token and SinCos Positional Embeddings ###
-        self.dec_cls_token = nn.Parameter(torch.zeros(1,1,config.encoder_embed_dim))
-        self.dec_pos_embed = sincos_embeddings(num_tokens=num_patches+1,
-                                               embed_dim=config.encoder_embed_dim,  
+        ### Decoder SinCos Positional Embeddings ###
+        self.dec_pos_embed = sincos_embeddings(num_tokens=num_patches,
+                                               embed_dim=config.decoder_embed_dim,  
                                                requires_grad=config.learnable_positional_encodings)
 
         self.decoder_blocks = nn.ModuleList(
@@ -132,24 +131,66 @@ class VITMAEDecoder(nn.Module):
                              mlp_p=config.decoder_mlp_p, 
                              fused_attention=config.fused_attention)
 
-                for _ in range(config.encoder_depth)
+                for _ in range(config.decoder_depth)
             ]
         )
 
-        self.decoder_layer_norm = nn.LayerNorm(config.encoder_embed_dim)
+        self.decoder_layer_norm = nn.LayerNorm(config.decoder_embed_dim)
 
     def forward(self, x, restore_idx):
-
-        x = self.encoder2decoder_embbedding_proj(x)
         
+        ### Project Encoder Embeddings to Decoder Embeddings ###
+        x = self.encoder2decoder_embbedding_proj(x)
+
+        ### Remove CLS Token from Encoder Output ###
+        x = x[:, 1:, :]
+
+        ### Track the number of selected idx (excluding the CLS Token now) ###
+        batch_size, num_selected_idx, embed_dim = x.shape
+        
+        ### Expand Mask Token (repeating for the number of tokens that were masked) ###
+        mask_token = self.mask_token.repeat(batch_size, self.num_patches - num_selected_idx, 1)
+
+        ### Place Selected Tokens Back in Original Location and Fill Masked Locations with Mask Token ### 
+        x = torch.cat([x, mask_token], dim=1)
+
+        ### Add Decoder Positional Embeddings ###
+        x = x + self.dec_pos_embed
+
+        ### Pass Through Transformer Blocks ###
+        for block in self.decoder_blocks:
+            x = block(x)
+        
+        ### Normalize Output ###
+        x = self.decoder_layer_norm(x)
+
+        return x
+
+
+class ViTMAEForPreTraining(nn.Module):
+    def __init__(self, config):
+        super(ViTMAEForPreTraining, self).__init__()
+
+class ViTMAEForImageClassification(nn.Module):
+    def __init__(self, config):
+        super(ViTMAEForImageClassification, self).__init__()
+
+class ViTMAEForSegmentation(nn.Module):
+    def __init__(self, mae_config, upernet_config):
+        super(ViTMAEForSegmentation, self).__init__()
 
 
 if __name__ == "__main__":
 
     rand = torch.randn(4,3,224,224)
     mae_config = MAEConfig()
-    model = VITMAEEncoder(mae_config)
-    out, mask, restore_idx = model(rand, mask_ratio=0.75)
+    encoder_model = VITMAEEncoder(mae_config)
+    out, mask, restore_idx = encoder_model(rand, mask_ratio=0.75)
+
+    decoder_model = VITMAEDecoder(mae_config, 
+                                  num_patches=encoder_model.patch_embed.num_patches)
+    out = decoder_model(out, restore_idx)
     print(out.shape)
-    print(mask.shape)
-    print(restore_idx.shape)
+    # print(out.shape)
+    # print(mask.shape)
+    # print(restore_idx.shape)
