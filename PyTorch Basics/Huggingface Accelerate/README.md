@@ -9,9 +9,16 @@ To train larger models efficiently, we need to be able to utilize multiple GPUs 
 - Gathering metrics across GPUs
 - Checkpointing/Resuming model training
 - Training logs stored in [Weights and Biases](https://wandb.ai/site)
-  
-To run this script, first downlod the ImageNet dataset. To do this you can just follow the [instructions from Google](https://cloud.google.com/tpu/docs/imagenet-setup) to set up the training and validation data! Next create a folder for where you want to store your checkpoints. Also verify that you have Accelerate installed and go through the prompts when you enter ```accelerate config``` to let it know information about the system and what resources you want to use. Pass the path to your imagenet data and working directory to the command below and you are good to go!
 
+### Download ImageNet Dataset
+To run this script, first downlod the ImageNet dataset. To do this you can just follow the [instructions from Google](https://cloud.google.com/tpu/docs/imagenet-setup) to set up the training and validation data!
+
+**Alternative:**
+
+[Here](https://gist.githubusercontent.com/antoinebrl/7d00d5cb6c95ef194c737392ef7e476a/raw/74a1246c9254676e19c106ae67e57c9a174ff5de/prepare.sh) is a really convenient script and instructions that can take the `ILSVRC2012_img_train.tar` and `ILSVRC2012_img_val.tar` files you download from the [official Imagenet website](https://image-net.org/download.php). Just follow the instructions and download the data, just keep track of the path to where you save the data as we will need that later!
+
+### Setup Training Environment
+ Next create a folder for where you want to store your checkpoints. Also verify that you have Accelerate installed and go through the prompts when you enter ```accelerate config``` to let it know information about the system and what resources you want to use. You can also run ``accelerate test`` to verify the installation and access to the identified resources Pass the path to your imagenet data and working directory to the command below and you are good to go!
 ```
 accelerate launch train.py --experiment_name="ResNet50" \
                            --path_to_data="<PATH_TO_IMAGENET_ROOT>" \
