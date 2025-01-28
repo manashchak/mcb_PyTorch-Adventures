@@ -65,7 +65,7 @@ def parse_args():
                         default=1, 
                         type=int)
     parser.add_argument("--learning_rate", 
-                        help="Starting Learning Rate for StepLR", 
+                        help="Max Learning rate for cosine scheduler", 
                         default=0.003,
                         type=float)
     parser.add_argument("--weight_decay", 
