@@ -88,7 +88,7 @@ class VITMAEEncoder(nn.Module):
             ]
         )
 
-        self.encoder_layer_norm = nn.LayerNorm(config.encoder_embed_dim)
+        self.encoder_layer_norm = nn.LayerNorm(config.encoder_embed_dim, eps=1e-6)
     
 
     def forward(self, x, mask_ratio=0.0):
@@ -168,7 +168,7 @@ class VITMAEDecoder(nn.Module):
             ]
         )
 
-        self.decoder_layer_norm = nn.LayerNorm(config.decoder_embed_dim)
+        self.decoder_layer_norm = nn.LayerNorm(config.decoder_embed_dim, eps=1e-6)
 
     def forward(self, x, restore_idx):
         
@@ -264,17 +264,19 @@ class ViTMAEForImageClassification(nn.Module):
 
 
 class ViTMAEForSegmentation(nn.Module):
-    def __init__(self, mae_config, upernet_config):
+    def __init__(self, mae_config, segmentation_head_config):
         super(ViTMAEForSegmentation, self).__init__()
 
 def _init_weights_(module: nn.Module):
 
     if isinstance(module, VITMAEEncoder):
-        module.enc_cls_token.data = nn.init.trunc_normal_(module.enc_cls_token.data, mean=0, std=0.02)
+        module.enc_cls_token.data = nn.init.normal_(module.enc_cls_token.data, mean=0, std=0.02)
     if isinstance(module, VITMAEDecoder):
-        module.mask_token.data = nn.init.trunc_normal_(module.mask_token.data, mean=0, std=0.02)
-    elif isinstance(module, (nn.Linear, nn.Conv2d)):
-        module.weight.data = nn.init.trunc_normal_(module.weight.data, mean=0, std=0.02)
+        module.mask_token.data = nn.init.normal_(module.mask_token.data, mean=0, std=0.02)
+    elif isinstance(module, PatchEmbed):
+        torch.nn.init.xavier_uniform_(module.proj.weight.data.flatten(1))
+    elif isinstance(module, nn.Linear):
+        module.weight.data = nn.init.normal_(module.weight.data, mean=0, std=0.02)
         if module.bias is not None:
             module.bias.data.zero_()
     elif isinstance(module, nn.LayerNorm):
@@ -286,4 +288,4 @@ if __name__ == "__main__":
     rand = torch.randn(4,3,224,224)
     mae_config = MAEConfig()
     model = ViTMAEForPreTraining(mae_config)
-    print(model)
+    

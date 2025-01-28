@@ -6,11 +6,11 @@ import argparse
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torchvision import datasets
-from torchvision import transforms
+from torchvision.transforms import Compose, Normalize, RandomHorizontalFlip, RandomResizedCrop, ToTensor, Resize
+from torchvision.transforms.functional import InterpolationMode
 from accelerate import Accelerator
 from transformers import get_cosine_schedule_with_warmup
 
-import utils
 from MaskedAutoEncoder import MAEConfig, ViTMAEForPreTraining
 
 import warnings 
@@ -181,21 +181,26 @@ mae_config = MAEConfig(img_size=args.img_size,
 
 model = ViTMAEForPreTraining(config=mae_config)
 
+### Count Number of Parameters ###
+model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+params = sum([np.prod(p.size()) for p in model_parameters])
+accelerator.print("Number of Parameters:", params)
+
 ### Set Transforms for Training and Testing ###
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
-train_transforms = transforms.Compose([
-    transforms.RandomResizedCrop((args.img_size, args.img_size)),  
-    transforms.RandomHorizontalFlip(),   
-    transforms.ToTensor(),  
-    transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)           
+train_transforms = Compose([
+    RandomResizedCrop(args.input_size, scale=(0.2, 1.0), interpolation=InterpolationMode.BICUBIC),  
+    RandomHorizontalFlip(),   
+    ToTensor(),  
+    Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)           
 ])
 
-test_transforms = transforms.Compose([ 
-    transforms.Resize((args.img_size, args.img_size)),
-    transforms.ToTensor(),  
-    transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)     
+test_transforms = Compose([ 
+    Resize((args.img_size, args.img_size)),
+    ToTensor(),  
+    Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)     
 ])
 
 ### Load Dataset ###
@@ -244,10 +249,10 @@ if (not args.bias_weight_decay) or (not args.norm_weight_decay):
         {"params": weight_decay_params, "weight_decay": args.weight_decay},
         {"params": no_weight_decay_params, "weight_decay": 0.0}
     ]
-    optimizer = torch.optim.AdamW(optimizer_group, lr=args.learning_rate, weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(optimizer_group, lr=args.learning_rate, betas=(0.9,0.95))
 
 else:
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay, betas=(0.9,0.95))
 
 ### Define Scheduler (Compute number of training steps from epochs and adjust for num_gpus) ###
 num_training_steps = len(trainloader) * args.epochs // args.gradient_accumulation_steps
