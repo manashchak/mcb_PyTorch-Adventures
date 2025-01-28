@@ -330,7 +330,7 @@ for epoch in range(starting_checkpoint, args.epochs):
     model.eval()
     for images, _ in tqdm(testloader, disable=not accelerator.is_local_main_process):
 
-        images, targets = images.to(accelerator.device)
+        images = images.to(accelerator.device)
 
         with torch.no_grad():
             encoded, decoded, logits, loss = model(images)
