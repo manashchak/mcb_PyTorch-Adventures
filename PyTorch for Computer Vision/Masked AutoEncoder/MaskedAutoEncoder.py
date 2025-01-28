@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from typing import Literal
 from VisionTransformer import PatchEmbed, EncoderBlock
-from utils import sincos_embeddings, random_masking
+from utils import sincos_embeddings, random_masking, patchify
 from dataclasses import dataclass
 
 @dataclass
@@ -10,7 +12,7 @@ class MAEConfig:
     ### Input Image Config ###
     img_size: int = 224
     patch_size: int = 16
-    in_chans: int = 3
+    in_channels: int = 3
 
     ### MAE Encoder Config ###
     encoder_embed_dim: int = 768
@@ -33,9 +35,27 @@ class MAEConfig:
     ### MAE Settings ###
     fused_attention: bool = True
     learnable_positional_encodings: bool = True
+    custom_weight_init: bool = True
+
+    ### Masking Config ###
+    mask_ratio: float = 0.75
+
+    ### PreTrained Weights Config ###
+    hf_model_name: str = "facebook/vit-mae-base"
+    pretrained_backbone: Literal["pretrained", "pretrained_huggingface", "random"] = "pretrained"
+    path_to_pretrained_weights: str = None
 
 
 class VITMAEEncoder(nn.Module):
+
+    """
+    MAE Encoder as described in "Masked AutoEncoders are Scalable Vision Learners" (https://arxiv.org/pdf/2111.06377)
+
+    The MAE Encoder is nearly identical to the Vision Transformer (https://arxiv.org/abs/2010.11929) with the exception
+    of the Random Masking Strategy. Unlike Masked Language Modeling seen in BERT/RoBERTa, where tokens are selected
+    to be masked and replaced with a mask token, the MAE Encoder completely removes randomly selected masked tokens. When
+    mask_ratio is set to 0, the VITMAEEncoder acts as a normal Vision Transformer. 
+    """
     def __init__(self, config):
         
         super(VITMAEEncoder, self).__init__()
@@ -45,7 +65,7 @@ class VITMAEEncoder(nn.Module):
         ### Define Encoder ###
         self.patch_embed = PatchEmbed(img_size=config.img_size, 
                                       patch_size=config.patch_size, 
-                                      in_chans=config.in_chans, 
+                                      in_chans=config.in_channels, 
                                       embed_dim=config.encoder_embed_dim)
         
         ### CLS Token and SinCos Positional Embeddings ###
@@ -86,6 +106,11 @@ class VITMAEEncoder(nn.Module):
 
             x, mask, restore_idx = random_masking(x, mask_ratio=mask_ratio)
 
+        else: 
+            
+            mask = None
+            restore_idx = None
+
         ### Add Position Information and Concatenate on CLS Token ###
         cls_token  = self.enc_cls_token + self.enc_pos_embed[:, :1, :]
 
@@ -103,6 +128,14 @@ class VITMAEEncoder(nn.Module):
         return x, mask, restore_idx
 
 class VITMAEDecoder(nn.Module):
+
+    """
+    MAE Decoder used for Masked Image Pretraining. This is a lightweight decoder that does two things:
+        
+        1) Projecting the embeddings from the embed_dim of the encoder to the embed_dim of the decoder
+        2) Place the masked output of the encoder back into its original positions, and place masked tokens
+           in the positions that were selected for masking
+    """
     def __init__(self, config, num_patches):
         super(VITMAEDecoder, self).__init__()
 
@@ -153,6 +186,8 @@ class VITMAEDecoder(nn.Module):
 
         ### Place Selected Tokens Back in Original Location and Fill Masked Locations with Mask Token ### 
         x = torch.cat([x, mask_token], dim=1)
+        restore_idx_repeat = restore_idx.unsqueeze(-1).repeat(1,1,embed_dim)
+        x = torch.gather(x, dim=1, index=restore_idx_repeat)
 
         ### Add Decoder Positional Embeddings ###
         x = x + self.dec_pos_embed
@@ -166,31 +201,89 @@ class VITMAEDecoder(nn.Module):
 
         return x
 
-
 class ViTMAEForPreTraining(nn.Module):
-    def __init__(self, config):
+    """
+    The default Vision Transformer takes images of size 224 with patch size 16, providing us 
+    196 images patches. With the default 75% masking strategy, 147 of the image patches are randomly selected and 
+    removed, and only the remaining 49 image patches are passed to the encoder. 
+
+    The encoded image patches are then passed to the MAE Decoder, where we place the selected 49 tokens back in their 
+    original positions, a learnable mask token in the other 147 positions. These 196 tokens (again the 49 
+    outputs from the Encoder and 147 mask tokens) are then passed to the decoder. The output of the decoder is 
+    projected back to the orignal image space, and an MSE Loss is done between masked patches and the original image 
+    patches. 
+
+    KEY IDEA: The only reason this works is because, we add the positional embeddings to our image tokens BEFORE MASKING!!!
+    Once the positional information is added, the order of the image tokens no longer matter (Transformers are Permutation Invariant)
+    Therefore, when the encoder sees the 49 randomly selected image patches, it also sees the position of them (and therefore
+    the relative position between them). 
+
+    This means when we are done pretraining, we can pass in all 196 image tokens to our model (with their cooresponding 
+    positional information), so we can finetune something like a classification model using the Encoder.
+    """
+    def __init__(self, config, mask_ratio=0.75):
         super(ViTMAEForPreTraining, self).__init__()
 
+        self.config = config 
+        self.mask_ratio = mask_ratio
+
+        ### Define the Encoder/Decoder of the MAE ###
+        self.encoder = VITMAEEncoder(config=config)
+        self.decoder = VITMAEDecoder(config=config, 
+                                     num_patches=self.encoder.patch_embed.num_patches)
+        
+        self.embed2image = nn.Linear(self.config.decoder_embed_dim, 
+                                     self.config.in_channels * self.config.patch_size**2)
+        
+        if self.config.custom_weight_init:
+            self.apply(_init_weights_)
+
+    def forward(self, x):
+        
+        ### Encoder and Decoder Images ###
+        encoded, mask, restore_idx = self.encoder(x, mask_ratio=self.mask_ratio)
+        decoded = self.decoder(encoded, restore_idx)
+
+        ### Project Decoded Back to Pixel Space ###
+        logits = self.embed2image(decoded)
+
+        ### Patchify Original Images to Compute Loss on Masked Patches ###
+        patched_target = patchify(x)
+
+        ### Compute Loss ###
+        loss = (logits - patched_target) ** 2
+        loss = loss.mean(dim=-1)
+        loss = (loss * mask).sum() / mask.sum()
+
+        return encoded, decoded, logits, loss
+        
 class ViTMAEForImageClassification(nn.Module):
+
     def __init__(self, config):
         super(ViTMAEForImageClassification, self).__init__()
+
 
 class ViTMAEForSegmentation(nn.Module):
     def __init__(self, mae_config, upernet_config):
         super(ViTMAEForSegmentation, self).__init__()
 
+def _init_weights_(module: nn.Module):
+
+    if isinstance(module, VITMAEEncoder):
+        module.enc_cls_token.data = nn.init.trunc_normal_(module.enc_cls_token.data, mean=0, std=0.02)
+    if isinstance(module, VITMAEDecoder):
+        module.mask_token.data = nn.init.trunc_normal_(module.mask_token.data, mean=0, std=0.02)
+    elif isinstance(module, (nn.Linear, nn.Conv2d)):
+        module.weight.data = nn.init.trunc_normal_(module.weight.data, mean=0, std=0.02)
+        if module.bias is not None:
+            module.bias.data.zero_()
+    elif isinstance(module, nn.LayerNorm):
+        module.bias.data.zero_()
+        module.weight.data.fill_(1.0)
 
 if __name__ == "__main__":
 
     rand = torch.randn(4,3,224,224)
     mae_config = MAEConfig()
-    encoder_model = VITMAEEncoder(mae_config)
-    out, mask, restore_idx = encoder_model(rand, mask_ratio=0.75)
-
-    decoder_model = VITMAEDecoder(mae_config, 
-                                  num_patches=encoder_model.patch_embed.num_patches)
-    out = decoder_model(out, restore_idx)
-    print(out.shape)
-    # print(out.shape)
-    # print(mask.shape)
-    # print(restore_idx.shape)
+    model = ViTMAEForPreTraining(mae_config)
+    print(model)

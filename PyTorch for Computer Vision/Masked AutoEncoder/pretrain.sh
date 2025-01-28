@@ -1,0 +1,28 @@
+accelerate launch pretrain_mae.py \
+    --experiment_name "MAE Pretraining" \
+    --wandb_run_name "pretrain_run1" \
+    --path_to_data "/mnt/datadrive/data/ImageNet" \
+    --working_directory "work_dir" \
+    --img_size 224 \
+    --input_channels 3 \
+    --epochs 800 \
+    --warmup_epochs 40 \
+    --save_checkpoint_interval 10 \
+    --per_gpu_batch_size 256 \
+    --gradient_accumulation_steps 1 \
+    --learning_rate 1.5e-4 \
+    --weight_decay 0.05 \
+    --max_grad_norm 1.0 \
+    --img_size 224 \
+    --encoder_embed_dim 768 \
+    --encoder_depth 12 \
+    --encoder_num_heads 12 \
+    --encoder_mlp_ratio 4 \
+    --decoder_embed_dim 512 \
+    --decoder_depth 8 \
+    --decoder_num_heads 16 \
+    --decoder_mlp_ratio 4 \
+    --num_workers 32 \
+    --custom_weight_init \
+    --log_wandb
+    

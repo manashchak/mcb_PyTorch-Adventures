@@ -71,6 +71,35 @@ def random_masking(x, mask_ratio=0.75):
 
     return x_masked, mask, restore_idx
     
+def patchify(images, image_size=224, num_channels=3, patch_size=16):
+
+    """
+    Helper function to cut images into patches.
+
+    images: (B x 3 x 224 x 224)
+    output: (B x 196 x 768)
+    """
+
+    batch_size = images.shape[0]
+
+    ### Compute the Patched Grid Dimension (Num patches along the H and W) ###
+    num_patches = image_size // patch_size
+
+    ### Cut Images into Patches (B x C x 14 x 16 x 14 x 16) ###
+    patched = images.reshape(batch_size, 
+                             num_channels, 
+                             num_patches, 
+                             patch_size, 
+                             num_patches,
+                             patch_size)
+    
+    ### Permute Dimensions (B x 14 x 14 x 16 x 16 x 3) ###
+    patched = patched.permute(0,2,4,3,5,1)
+    
+    ### Merge Dimensions Together (B x 196 x 768) ###
+    patched = patched.reshape(batch_size, num_patches**2, num_channels * patch_size**2)
+    
+    return patched
 
 
 
