@@ -1,10 +1,12 @@
+import os
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from typing import Literal
 from VisionTransformer import PatchEmbed, EncoderBlock
-from utils import sincos_embeddings, random_masking, patchify
+from transformers import ViTMAEModel
 from dataclasses import dataclass
+from safetensors.torch import load_file
+from utils import sincos_embeddings, random_masking, patchify
 
 @dataclass
 class MAEConfig:
@@ -31,6 +33,9 @@ class MAEConfig:
     decoder_mlp_p: float = 0.0
     decoder_proj_p: float = 0.0
     decoder_mlp_ratio: int = 4
+
+    ### Image Classification Config ###
+    num_classes = 1000
     
     ### MAE Settings ###
     fused_attention: bool = True
@@ -89,7 +94,6 @@ class VITMAEEncoder(nn.Module):
         )
 
         self.encoder_layer_norm = nn.LayerNorm(config.encoder_embed_dim, eps=1e-6)
-    
 
     def forward(self, x, mask_ratio=0.0):
         
@@ -256,15 +260,109 @@ class ViTMAEForPreTraining(nn.Module):
         loss = (loss * mask).sum() / mask.sum()
 
         return encoded, decoded, logits, loss
-        
-class ViTMAEForImageClassification(nn.Module):
+
+class ViTMAEForDownstreamTasks(nn.Module):
+    """
+    Dummy class that holds load_backbone method to
+    toggle between our own pretrained weights and 
+    the huggingface pretrained weights
+    """
+    def __init__(self):
+        super().__init__()
+
+    def load_backbone(self, config):
+
+        """
+        Helper function to load the VITMAEEncoder, where we identify
+        if we want to load our own pre-trained weights or if we want to use
+        the huggingface weights! All of this is indicated in the config:
+
+        config arguments:
+
+            1) hf_model_name: Name of pretrained model from huggingface
+            2) pretrained_backbone: Options include
+                - pretrained: This will load our own pretrained weights
+                - pretrained_huggingface: This will load the indicated huggingface backbone
+                - random: Loads a randomly initialized backbone
+            3) path_to_pretrained_weights: if pretrained_backbone is "pretrained"
+                                        then we also provide path to weights
+        """
+
+        if config.pretrained_backbone == "pretrained_huggingface":
+            print("Loading Huggingface MAE Backbone:", config.hf_model_name)
+            backbone = ViTMAEModel.from_pretrained(config.hf_model_name)
+            
+            ### No Need for Random Masking when Finetuning, so set mask_ratio to 0 ###
+            backbone.config.mask_ratio= 0.0
+
+        else:
+            backbone = VITMAEEncoder(config)
+
+            if config.pretrained_backbone == "pretrained":
+                if config.path_to_pretrained_weights is None:
+                    raise Exception("Provide the argument `path_to_pretrained_weights` in the config, else we cant load them!")
+                else:
+                    if not os.path.isfile(config.path_to_pretrained_weights):
+                        raise Exception(f"Provided path to safetensors weights {self.config.path_to_pretrained_weights} is invalid!")
+                    
+                    print(f"Loading Masked Autoencoder Backbone from:", config.path_to_pretrained_weights)
+
+                    ### Load Weights with load_file from safetensors ###
+                    state_dict = load_file(config.path_to_pretrained_weights)
+                    
+                    ### Cleanup Weights we dont need (Remove Backbone) ###
+                    backbone_keys = {}
+                    for key in state_dict.keys():
+                        
+                        if ("decoder" in key) | ("embed2image" in key):
+                            continue
+
+                        else:
+
+                            new_key = key.replace("encoder.", "") if key.startswith("encoder.") else key
+                            backbone_keys[new_key] = state_dict[key]
+                            
+                    backbone.load_state_dict(backbone_keys)
+                        
+        return backbone
+
+
+class ViTMAEForImageClassification(ViTMAEForDownstreamTasks):
 
     def __init__(self, config):
         super(ViTMAEForImageClassification, self).__init__()
 
+        self.config = config
 
-class ViTMAEForSegmentation(nn.Module):
-    def __init__(self, mae_config, segmentation_head_config):
+        self.encoder = self.load_backbone(config)
+
+        self.hf_backbone = False
+        if config.pretrained_backbone == "pretrained_huggingface":
+            self.hf_backbone = True
+
+        self.head = nn.Linear(self.encoder.config.hidden_size if self.hf_backbone else config.encoder_embed_dim,
+                              config.num_classes)
+        
+        self.loss_func = nn.CrossEntropyLoss()
+        
+    def forward(self, x):
+
+        if self.hf_backbone:
+            output = self.encoder(x)["last_hidden_state"]
+        else:
+            output, _, _ = self.encoder(x)
+
+        ### Index out CLS Token ###
+        cls_token = output[:, 0]
+
+        ### Compute Final Output ###
+        logits = self.head(cls_token)
+
+        return logits
+
+        
+class ViTMAEForSegmentation(ViTMAEForDownstreamTasks):
+    def __init__(self, mae_config):
         super(ViTMAEForSegmentation, self).__init__()
 
 def _init_weights_(module: nn.Module):
@@ -286,6 +384,9 @@ def _init_weights_(module: nn.Module):
 if __name__ == "__main__":
 
     rand = torch.randn(4,3,224,224)
-    mae_config = MAEConfig()
-    model = ViTMAEForPreTraining(mae_config)
+    mae_config = MAEConfig(pretrained_backbone="pretrained_huggingface", 
+                           path_to_pretrained_weights="work_dir/MAE Pretraining/checkpoint_50/model.safetensors")
+    model = ViTMAEForImageClassification(mae_config)
+    rand = torch.randn(4,3,224,224)
+    model(rand)
     

@@ -24,5 +24,6 @@ accelerate launch pretrain_mae.py \
     --decoder_mlp_ratio 4 \
     --num_workers 32 \
     --custom_weight_init \
-    --log_wandb
+    --log_wandb \
+    --resume_from_checkpoint "checkpoint_50"
     
