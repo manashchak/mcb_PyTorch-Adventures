@@ -91,11 +91,8 @@ There are a few other datasets that we will use but are inconsistent to automati
   - **PixelCNN**
   - **WaveNet**
 - ### Generative Adversarial Networks ##
-<<<<<<< HEAD
   - [**Intro to Generative Adversarial Networks**](PyTorch%20for%20Generation/Generative%20Adversarial%20Network/Intro%20to%20GANs/)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1s2zEnDKo0zr4hqzSmsDzQvWHs40KPkgz?usp=sharing)
-=======
-  - [**Intro to Generative Adversarial Networks**](PyTorch%20for%20Generation/Generative%20Adversarial%20Network/Intro%20to%20GANs/)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/1ESeIEXOxBw8TEgUxDHhrwIAZgDYiWehX/view?usp=sharing)
->>>>>>> 13aeea40ff7c5f3045cc0fbd538d836a1415fd3a
+  
   - **SuperResolution with SRGAN**
   - **Image2Image Translation with CycleGAN**
 
