@@ -18,13 +18,15 @@ def download_image(example):
             response = requests.get(img_link, timeout=2)
             response.raise_for_status()
 
-            image = Image.open(BytesIO(response.content))
+            with Image.open(BytesIO(response.content)) as img:
+                img.load()
+                img.verify()
+                img = img.convert("RGB")
 
+            images.append(img)
+            
         except:
-     
-            image = None
-
-        images.append(image)
+            images.append(None)
 
     example["image"] = images
 
