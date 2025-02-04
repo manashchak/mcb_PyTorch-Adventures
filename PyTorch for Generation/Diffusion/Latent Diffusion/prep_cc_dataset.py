@@ -4,6 +4,8 @@ from io import BytesIO
 from PIL import Image
 import requests
 import argparse
+import warnings
+warnings.simplefilter("error")
 
 
 def download_image(example):
@@ -13,13 +15,13 @@ def download_image(example):
     for img_link in example["img_link"]:
         try:
 
-            response = requests.get(img_link, timeout=10)
+            response = requests.get(img_link, timeout=2)
             response.raise_for_status()
 
             image = Image.open(BytesIO(response.content))
 
         except:
-            
+     
             image = None
 
         images.append(image)
@@ -45,7 +47,7 @@ def build_hf_dataset(path_to_train_tsv, path_to_val_tsv, path_to_store, sample_p
         dataset["train"] = dataset["train"].shuffle().select(range(samples_to_keep))
     
     print(dataset)
-    
+
     dataset = dataset.map(download_image, batched=True, batch_size=100, num_proc=num_workers)
     dataset = dataset.filter(lambda x: x["image"] is not None, num_proc=num_workers)
     
