@@ -52,6 +52,7 @@ def build_hf_dataset(path_to_train_tsv, path_to_val_tsv, path_to_store, sample_p
     dataset = dataset.filter(lambda x: x["image"] is not None, num_proc=num_workers)
     
     dataset.save_to_disk(path_to_store)
+    dataset.cleanup_cache_files()
 
     
     
