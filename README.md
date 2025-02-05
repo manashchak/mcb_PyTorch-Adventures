@@ -92,9 +92,7 @@ There are a few other datasets that we will use but are inconsistent to automati
   - **WaveNet**
 - ### Generative Adversarial Networks ##
   - [**Intro to Generative Adversarial Networks**](PyTorch%20for%20Generation/Generative%20Adversarial%20Network/Intro%20to%20GANs/)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1s2zEnDKo0zr4hqzSmsDzQvWHs40KPkgz?usp=sharing)
-  
   - [**Deep Convolutional GAN**](PyTorch%20for%20Generation/Generative%20Adversarial%20Network/DCGAN/)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kB-6KvR0IVsXtWI6MElNd3m02mpX7S9u?usp=sharing)
-  
   - **SuperResolution with SRGAN**
   - **Image2Image Translation with CycleGAN**
 
