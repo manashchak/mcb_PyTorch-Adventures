@@ -36,6 +36,8 @@ class MAEConfig:
 
     ### Image Classification Config ###
     num_classes = 1000
+
+    ### Segmentation Head Config ###
     
     ### MAE Settings ###
     fused_attention: bool = True
