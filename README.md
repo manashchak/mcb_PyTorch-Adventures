@@ -117,8 +117,8 @@ There are a few other datasets that we will use but are inconsistent to automati
 
 ## Reinforcement Learning
 - ### Model-Based Learning 
-  - **Policy Iteration**
-  - **Value Iteration**
+  - [**Policy Iteration**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Based%20Learning/intro_rl_and_policy_iter.ipynb)
+  - [**Value Iteration**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Based%20Learning/value_iteration.ipynb)
 - ### Model-Free Learning 
   - **Temporal Difference Learning**
   - **SARSA**
