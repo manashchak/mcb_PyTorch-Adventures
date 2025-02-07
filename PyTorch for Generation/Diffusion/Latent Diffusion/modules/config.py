@@ -24,10 +24,9 @@ class LDMConfig:
     decoder_attention_residual_connections: bool = True
 
     ### Block Config ###
-    channels_per_block: Tuple = (128, 256, 512, 512)
+    vae_channels_per_block: Tuple = (128, 256, 512, 512)
     factor: int = 2
     kernel_size: int = 3
-    dropout: float = 0.0
 
     ### Quantization ###
     quantize = False
@@ -37,13 +36,32 @@ class LDMConfig:
     ### UNET CONFIG ###
     ###################
 
+    ### UNET Parts Config ###
+    down_block_types: Tuple = ("Down", "AttnDown", "AttnDown", "AttnDown")
+    mid_block_types: Tuple = "MidBlock2D"
+    up_block_types: Tuple = ("Up", "AttnUp", "AttnUp", "AttnUp")
+    unet_channels_per_block: Tuple = (224, 448, 768, 896)
+    unet_residual_layers_per_block: int = 2
+    downsample_factor: int = 2
+    downsample_kernel_size: int = 3
+
+    ### Time Embeddings Config ###
+    time_embed_start_dim: int = 320
+    time_embed_proj_dim: int = 1280
+
+    ### Attention Config ###
+    transformer_blocks_per_layer: int = 1
+    transformer_dim_mult: int = 4
+    attention_bias: bool = False
+    attention_head_dim: int = 8
+
+    ### Text Embeddings Config ###
+    text_embed_dim: int = 768
 
     ######################
     ### GENERAL CONFIG ###
     ######################
-
-    ### GroupNorm Config ###
-    groupnorm_groups: int = 32
+    groupnorm_groups: int = 2
     norm_eps: float = 1e-6
-        
+    dropout: float = 0.0
 

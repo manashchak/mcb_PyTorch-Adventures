@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from layers import ResidualBlock2D, EncoderBlock2D, DecoderBlock2D, Attention
+from layers import ResidualBlock2D, EncoderBlock2D, DecoderBlock2D
+from transformer import Attention
 from config import LDMConfig
 
 class VAEAttentionResidualBlock(nn.Module):
@@ -316,7 +317,7 @@ class EncoderDecoder(nn.Module):
         self.encoder = VAEEncoder(in_channels=config.in_channels, 
                                   out_channels=config.latent_channels, 
                                   double_z=not config.quantize
-                                  channels_per_block=config.channels_per_block,
+                                  channels_per_block=config.vae_channels_per_block,
                                   residual_layers_per_block=config.encoder_residual_layers_per_block, 
                                   num_attention_layers=config.encoder_attention_layers,
                                   attention_residual_connections=config.encoder_attention_residual_connections,
@@ -328,7 +329,7 @@ class EncoderDecoder(nn.Module):
         
         self.decoder = VAEDecoder(in_channels=config.latent_channels, 
                                   out_channels=config.out_channels, 
-                                  channels_per_block=config.channels_per_block,
+                                  channels_per_block=config.vae_channels_per_block,
                                   residual_layers_per_block=config.decoder_residual_layers_per_block, 
                                   num_attention_layers=config.decoder_attention_layers,
                                   attention_residual_connections=config.decoder_attention_residual_connections,
