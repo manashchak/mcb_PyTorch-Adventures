@@ -10,7 +10,8 @@ class LDMConfig:
     downsample_factor: int = 8
     latent_channels: int = 4
     groupnorm_groups: int = 32
-    layers_per_block: int = 2
+    encoder_layers_per_block: int = 2
+    decoder_layers_per_block: int = 3
     channels_per_block: Tuple = (128, 256, 512, 512)
     dropout: float = 0.0
 

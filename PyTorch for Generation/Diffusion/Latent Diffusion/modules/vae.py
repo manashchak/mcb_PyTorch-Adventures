@@ -172,14 +172,14 @@ class EncoderDecoder(nn.Module):
         self.encoder = VAEEncoder(in_channels=config.in_channels, 
                                   out_channels=config.latent_channels, 
                                   channels_per_block=config.channels_per_block,
-                                  layers_per_block=config.layers_per_block, 
+                                  layers_per_block=config.encoder_layers_per_block, 
                                   dropout_p=config.dropout,
                                   groupnorm_groups=config.groupnorm_groups)
         
         self.decoder = VAEDecoder(in_channels=config.latent_channels, 
                                   out_channels=config.out_channels, 
                                   channels_per_block=config.channels_per_block,
-                                  layers_per_block=config.layers_per_block, 
+                                  layers_per_block=config.decoder_layers_per_block, 
                                   dropout_p=config.dropout,
                                   groupnorm_groups=config.groupnorm_groups)
 
@@ -196,7 +196,7 @@ class VAE(EncoderDecoder):
 
     def kl_loss(self):
         pass
-    
+
 class VQVAE(EncoderDecoder):
     pass
 
@@ -206,6 +206,10 @@ class VQVAE(EncoderDecoder):
 if __name__ == "__main__":
 
     config = LDMConfig()
-    model = VAE(config)
+    model = EncoderDecoder(config)
 
-    print(model)
+    total = 0
+    for name, param in model.named_parameters():
+        total += param.numel()
+
+    print(total)
