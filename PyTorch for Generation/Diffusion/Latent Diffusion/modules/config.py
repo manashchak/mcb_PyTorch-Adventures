@@ -7,7 +7,7 @@ class LDMConfig:
     ######################################
     ### VARIATIONAL AUTOENCODER CONFIG ###
     ######################################
-
+    
     ### Input/Latent/Output Channels ###
     in_channels: int = 3
     out_channels: int = 3
@@ -29,7 +29,13 @@ class LDMConfig:
     kernel_size: int = 3
     dropout: float = 0.0
 
+    ### Quantization ###
+    quantize = False
+    codebook_size = 16384
+
+    ###################
     ### UNET CONFIG ###
+    ###################
 
 
     ######################

@@ -93,6 +93,7 @@ class VAEEncoder(nn.Module):
     Args:
         - in_channels: Number of input channels in our images
         - out_channels: The latent dimension output of our encoder
+        - double_z: If we are doing VAE, we need Mean/Std channels, else we just need our output
         - channels_per_block: How many starting channels in every block?
         - residual_layers_per_block: How many ResidualBlocks in every EncoderBlock
         - num_attention_layers: Number of Self-Attention layers stacked at end of encoder
@@ -108,6 +109,7 @@ class VAEEncoder(nn.Module):
     def __init__(self, 
                  in_channels = 3, 
                  out_channels = 4, 
+                 double_z = True,
                  channels_per_block = (128, 256, 512, 512), # Downsample Factor: 2^(len(channels_per_block) - 1)
                  residual_layers_per_block = 2,
                  num_attention_layers=1, 
@@ -171,8 +173,9 @@ class VAEEncoder(nn.Module):
                                      num_groups=groupnorm_groups, 
                                      eps=1e-6)
         
+        conv_out_channels = 2 * self.latent_channels if double_z else self.latent_channels
         self.conv_out = nn.Conv2d(self.channels_per_block[-1],
-                                  self.latent_channels*2, # We want 4 latent channels (so 4 for mean and 4 for std)
+                                  conv_out_channels, # We want 4 latent channels (so 4 for mean and 4 for std)
                                   kernel_size=3,
                                   padding="same")
     
@@ -312,6 +315,7 @@ class EncoderDecoder(nn.Module):
 
         self.encoder = VAEEncoder(in_channels=config.in_channels, 
                                   out_channels=config.latent_channels, 
+                                  double_z=not config.quantize
                                   channels_per_block=config.channels_per_block,
                                   residual_layers_per_block=config.encoder_residual_layers_per_block, 
                                   num_attention_layers=config.encoder_attention_layers,
@@ -358,5 +362,6 @@ if __name__ == "__main__":
 
     config = LDMConfig()
     model = EncoderDecoder(config)
-    rand = torch.randn(4,4,32,32)
-    print(model.forward_dec(rand).shape)
+    print(model)
+    rand = torch.randn(4,3,256,256)
+    print(model.forward_enc(rand).shape)
