@@ -3,23 +3,69 @@ import torch.nn as nn
 import torch.nn.functional as F
 
     
-class UpSampleBlock(nn.Module):
-    def __init__(self, in_channels, kernel_size=3, upsample_factor=2):
-        super(UpSampleBlock, self).__init__()
+class UpSampleBlock2D(nn.Module):
+
+    """
+    Upsampling Block that takes 
+
+    (B x C x H x W) -> (B x C x H*2 x W*2)
+
+    Args:
+        - in_channels: Input channels of images (no change in channels)
+        - kernel_size: Kernel size in learnable convolution
+        - upsample_factor: By what factor do you want to upsample image by?
+    """
+
+    def __init__(self, 
+                 in_channels, 
+                 kernel_size=3, 
+                 upsample_factor=2):
+        
+        super(UpSampleBlock2D, self).__init__()
+
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        self.factor = upsample_factor
+
         self.upsample = nn.Sequential(
             nn.Upsample(scale_factor=upsample_factor),
             nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=1, padding='same')
         )
 
     def forward(self, x):
-        return self.upsample(x)
+        
+        batch, channels, height, width = x.shape
+
+        upsampled = self.upsample(x)
+
+        assert upsampled.shape[2:] == (height*self.factor, width*self.factor)
+
+        return upsampled
     
-class DownsampleBlock(nn.Module):
+class DownSampleBlock2D(nn.Module):
+
+    """
+    Downsampling Block that takes 
+
+    (B x C x H x W) -> (B x C x H/2 x W/2)
+
+    Args:
+        - in_channels: Input channels of images (no change in channels)
+        - kernel_size: Kernel size in learnable convolution
+        - kernel_size: What stride do you want to use to downsample?
+
+    """
+
     def __init__(self, 
                  in_channels, 
-                 downsample_factor=2,
-                 kernel_size=3):        
-        super(DownsampleBlock, self).__init__()
+                 kernel_size=3,
+                 downsample_factor=2):    
+           
+        super(DownSampleBlock2D, self).__init__()
+
+        self.in_channels = in_channels
+        self.kernel_size = kernel_size
+        self.factor = downsample_factor
 
         self.downsample_conv = nn.Conv2d(in_channels=in_channels, 
                                          out_channels=in_channels, 
@@ -28,19 +74,40 @@ class DownsampleBlock(nn.Module):
                                          padding=1)
         
     def forward(self, x):
-        return self.downsample_conv(x)
+        
+        batch, channels, height, width = x.shape
+
+        downsampled = self.downsample_conv(x)
+
+        assert downsampled.shape[2:] == (height/self.factor, width/self.factor)
+        
+        return downsampled
     
-class ResidualBlock(nn.Module):
+class ResidualBlock2D(nn.Module):
+
+    """
+    Core Residual Block of a Stack of Convolutions and a Residual Connection
+
+    Args:
+        - in_channels: Input channels to the block
+        - out_channels: Output channels from the block
+        - dropout_p: Dropout probability you want to use
+        - groupnorm_groups: How many groups do you want in Groupnorm
+        - time_embed_proj: Do you want to inject time embeddings?
+        - time_embed_dim: Time embedding dimension
+        - norm_eps: Groupnorm eps
+    """
+
     def __init__(self, 
                  in_channels, 
                  out_channels, 
                  dropout_p = 0.0, 
                  groupnorm_groups = 32,
                  time_embed_proj = False, 
-                 time_embed_dim = 128,
+                 time_embed_dim = 1280,
                  norm_eps=1e-6):
         
-        super(ResidualBlock, self).__init__()
+        super(ResidualBlock2D, self).__init__()
 
 
         ### Input Convolutions ###
@@ -94,7 +161,25 @@ class ResidualBlock(nn.Module):
 
         return x
 
-class EncoderBlock(nn.Module):
+class EncoderBlock2D(nn.Module):
+
+    """
+    The Encoder block is a stack of Residual Blocks with an optional
+    downsampling layer to reduce the image size
+
+    Args:
+        - in_channels: The number of input channels to the Encoder
+        - out_channels: Number of output channels of the Encoder
+        - dropout_p: The dropout probability in the Residual Blocks
+        - norm_eps: Groupnorm eps
+        - num_residual_blocks: Number of Residual Blocks in the Encoder
+        - time_embed_proj: Do you want to enable time embeddings?
+        - time_embed_dim: Time embedding dimension
+        - add_downsample: Do you want to downsample the image?
+        - downsample_factor: By what factor do you want to downsample
+        - downsample_kernel_size: Kernel size for downsampling convolution
+    """
+
     def __init__(self, 
                  in_channels, 
                  out_channels, 
@@ -103,33 +188,33 @@ class EncoderBlock(nn.Module):
                  groupnorm_groups = 32, 
                  num_residual_blocks = 2, 
                  time_embed_proj = False, 
-                 time_embed_dim = 128, 
+                 time_embed_dim = 1280, 
                  add_downsample = True,
                  downsample_factor = 2, 
                  downsample_kernel_size = 3):
         
-        super(EncoderBlock, self).__init__()
+        super(EncoderBlock2D, self).__init__()
         
         self.blocks = nn.ModuleList()
 
         for i in range(num_residual_blocks):       
             conv_in_channels = in_channels if i == 0 else out_channels
             self.blocks.append(
-                ResidualBlock(in_channels=conv_in_channels, 
-                              out_channels=out_channels,
-                              groupnorm_groups=groupnorm_groups,
-                              dropout_p=dropout_p, 
-                              time_embed_proj=time_embed_proj, 
-                              time_embed_dim=time_embed_dim,
-                              norm_eps=norm_eps
+                ResidualBlock2D(in_channels=conv_in_channels, 
+                                out_channels=out_channels,
+                                groupnorm_groups=groupnorm_groups,
+                                dropout_p=dropout_p, 
+                                time_embed_proj=time_embed_proj, 
+                                time_embed_dim=time_embed_dim,
+                                norm_eps=norm_eps
                         )
                 )
             
         self.downsample = nn.Identity()
         if add_downsample:
-            self.downsample = DownsampleBlock(in_channels=out_channels, 
-                                              downsample_factor=downsample_factor, 
-                                              kernel_size=downsample_kernel_size)
+            self.downsample = DownSampleBlock2D(in_channels=out_channels, 
+                                                downsample_factor=downsample_factor, 
+                                                kernel_size=downsample_kernel_size)
 
     def forward(self, x, time_embed=None):
 
@@ -141,7 +226,26 @@ class EncoderBlock(nn.Module):
         return x
 
 
-class DecoderBlock(nn.Module):
+class DecoderBlock2D(nn.Module):
+
+    """
+    The Decoder block is a stack of Residual Blocks with an optional
+    upsampling layer to reduce the image size
+
+    Args:
+        - in_channels: The number of input channels to the Encoder
+        - out_channels: Number of output channels of the Encoder
+        - dropout_p: The dropout probability in the Residual Blocks
+        - norm_eps: Groupnorm eps
+        - num_residual_blocks: Number of Residual Blocks in the Encoder
+        - time_embed_proj: Do you want to enable time embeddings?
+        - time_embed_dim: Time embedding dimension
+        - add_upsample: Do you want to upsample the image?
+        - upsample_factor: By what factor do you want to upsample
+        - upsample_kernel_size: Kernel size for upsampling convolution
+    """
+     
+
     def __init__(self, 
                  in_channels, 
                  out_channels, 
@@ -155,28 +259,28 @@ class DecoderBlock(nn.Module):
                  upsample_factor = 2, 
                  upsample_kernel_size = 3):
         
-        super(DecoderBlock, self).__init__()
+        super(DecoderBlock2D, self).__init__()
         
         self.blocks = nn.ModuleList()
 
         for i in range(num_residual_blocks):       
             conv_in_channels = in_channels if i == 0 else out_channels
             self.blocks.append(
-                ResidualBlock(in_channels=conv_in_channels, 
-                              out_channels=out_channels,
-                              groupnorm_groups=groupnorm_groups,
-                              dropout_p=dropout_p, 
-                              time_embed_proj=time_embed_proj, 
-                              time_embed_dim=time_embed_dim,
-                              norm_eps=norm_eps
+                ResidualBlock2D(in_channels=conv_in_channels, 
+                                out_channels=out_channels,
+                                groupnorm_groups=groupnorm_groups,
+                                dropout_p=dropout_p, 
+                                time_embed_proj=time_embed_proj, 
+                                time_embed_dim=time_embed_dim,
+                                norm_eps=norm_eps
                         )
                 )
             
         self.upsample = nn.Identity()
         if add_upsample:
-            self.upsample = UpSampleBlock(in_channels=out_channels, 
-                                          upsample_factor=upsample_factor, 
-                                          kernel_size=upsample_kernel_size)
+            self.upsample = UpSampleBlock2D(in_channels=out_channels, 
+                                            upsample_factor=upsample_factor, 
+                                            kernel_size=upsample_kernel_size)
 
     def forward(self, x, time_embed=None):
 
@@ -188,16 +292,43 @@ class DecoderBlock(nn.Module):
         return x
 
 class Attention(nn.Module):
+
     """
-    Regular Self-Attention but in this case we utilize flash_attention
-    incorporated in the F.scaled_dot_product_attention to speed up our training. 
+
+    Implementation of Self and Cross Attention in One Module
+
+    By default, self-attention will be computed on src (our images). If tgt is provided, then we are doing cross
+    attention. In cross attention, an attention_mask can be used (padding mask for our embedded text), and 
+    src is our text and tgt is the images.
+
+    Self-Attention:
+        - Compute Self Attention on the src Tensor
+            - One new step to include though is reshaping our src (image)
+                from (B x C x H x W) -> (B x H*W x C) before doing attention
+    
+    Cross Attention
+        - src: Our text Context (B x L x E)
+        - tgt: What we want to weight against our src and output
+            - One new step to include though is reshaping our tgt (image)
+                from (B x C x H x W) -> (B x H*W x C) before doing attention
+        - attention_mask: Padding mask for the text embeddings
+
+    Args:
+        - embedding_dimension: Number of channels in Image (the channels in BCHW act as our embedding)
+        - head_dim: What embedding dimension do you want to use per head?
+        - attn_dropout: What dropout probability do you want to use in attention
+        - groupnorm_groups: Number of groups in Groupnormalization
+        - attention_residual_connections: Do you want to add the input of attention to the output?
+
     """
+
     def __init__(self, 
                  embedding_dimension=768, 
                  head_dim=1, 
                  attn_dropout=0.0,
                  groupnorm_groups=32,
                  attention_residual_connection=True):
+        
         super(Attention, self).__init__()
 
         self.embedding_dimension = embedding_dimension
@@ -209,8 +340,10 @@ class Attention(nn.Module):
         assert embedding_dimension % head_dim == 0
         self.num_heads = embedding_dimension // head_dim
 
-        ### Attention Projections ###
+        ### GroupNorm ###
         self.groupnorm = nn.GroupNorm(num_channels=embedding_dimension, num_groups=groupnorm_groups, eps=1e-6)
+
+        ### Attention Projections ###
         self.q_proj = nn.Linear(embedding_dimension, embedding_dimension)
         self.k_proj = nn.Linear(embedding_dimension, embedding_dimension)
         self.v_proj = nn.Linear(embedding_dimension, embedding_dimension)
@@ -230,101 +363,86 @@ class Attention(nn.Module):
 
         return x, seq_len
     
-    def _seq2img(self, x):
+    def _seq2img(self, x, img_dim=None):
         """
         (B x H*W x C) -> (B x C x H x W)
         """
         batch, seq_len, channels = x.shape
-        h = w = int(seq_len**0.5)
+
+        ### Assume Square Image if no img_dim is provided ###
+        if img_dim is None:
+            h = w = int(seq_len**0.5)
+
+        else:
+            h, w = img_dim
 
         x = x.transpose(-1,-2).reshape(batch, channels, h, w)
 
         return x
 
-    def forward(self, 
-                src, 
-                tgt=None, 
-                attention_mask=None, 
-                causal=False):
-
-        """
-        By default, self-attention will be computed on src (with optional causal and/or attention mask). If tgt is provided, then
-        we are doing cross attention. In cross attention, an attention_mask can be used, but no causal mask can be applied.
-
-        Self-Attention:
-            - Compute Self Attention on the src Tensor
-                - One new step to include though is reshaping our src (image)
-                  from (B x C x H x W) -> (B x H*W x C) before doing attention
+    def forward_self_attn(self, images):
         
-        Cross Attention
-            - src: Our text Context (B x L x E)
-            - tgt: What we want to weight against our src and output
-                - One new step to include though is reshaping our tgt (image)
-                  from (B x C x H x W) -> (B x H*W x C) before doing attention
+        ### Reshape from Img Dim to Seq Dim ###
+        images, num_patches = self._img2seq(images)
 
-        """
+        ### QKV Projection ###
+        q = self.q_proj(images).reshape(-1, num_patches, self.num_heads, self.head_dim).transpose(1,2).contiguous()
+        k = self.k_proj(images).reshape(-1, num_patches, self.num_heads, self.head_dim).transpose(1,2).contiguous()
+        v = self.v_proj(images).reshape(-1, num_patches, self.num_heads, self.head_dim).transpose(1,2).contiguous()
 
-        ### Grab Shapes ###
-        batch = src.shape[0]
-
-        ### If target is not provided, we are doing self attention (with potential causal mask) ###    
-        if tgt is None:
-
-            residual = src
-            
-            ### Reshape from Img Dim to Seq Dim ###
-            src, src_len = self._img2seq(src)
-
-            ### QKV Projection ###
-            q = self.q_proj(src).reshape(batch, src_len, self.num_heads, self.head_dim).transpose(1,2).contiguous()
-            k = self.k_proj(src).reshape(batch, src_len, self.num_heads, self.head_dim).transpose(1,2).contiguous()
-            v = self.v_proj(src).reshape(batch, src_len, self.num_heads, self.head_dim).transpose(1,2).contiguous()
-
-            ### Implementing Attention Mask (but it'll never be used for Self-Attention) ####
-            if attention_mask is not None:
-                attention_mask = attention_mask.bool()
-                attention_mask = attention_mask.unsqueeze(1).unsqueeze(1).repeat(1,1,src_len,1)
-
-            attention_out = F.scaled_dot_product_attention(q,k,v, 
-                                                           attn_mask=attention_mask, 
-                                                           dropout_p=self.attn_dropout if self.training else 0.0, 
-                                                           is_causal=causal)
+        attention_out = F.scaled_dot_product_attention(q,k,v, 
+                                                       dropout_p=self.attn_dropout if self.training else 0.0)
         
-        ### If target is provided then we are doing cross attention ###
-        ### Our query will be the target and we will be crossing it with the encoder source (keys and values) ###
-        ### The src_attention_mask will still be the mask here, just repeated to the target size ###
+        ### Reshape back to (B, num_patches, head_dim) and Project with Linear ###
+        attention_out = attention_out.transpose(1,2).flatten(2)
+        attention_out = self.out_proj(attention_out)
+        
+        return attention_out
 
-        ### In our case the src is the Text Encodings and tgt is the Image embeddings ###
-        else:
 
-            residual = tgt
-  
-            ### Reshape from Img Dim to Seq Dim ###
-            tgt, tgt_len = self._img2seq(tgt)
+    def forward_cross_attn(self,
+                           images, 
+                           context,
+                           attention_mask=None):
+        
+        ### Reshape from Img Dim to Seq Dim ###
+        images, num_patches = self._img2seq(images)
 
-            batch, src_len, embed_dim = src.shape
+        ### Query Projection on Images ###
+        q = self.q_proj(images).reshape(-1, num_patches, self.num_heads, self.head_dim).transpose(1,2).contiguous()
 
-            ### Compute Queries on our Image Tensor ###
-            q = self.q_proj(tgt).reshape(batch, tgt_len, self.num_heads, self.head_dim).transpose(1,2).contiguous()
-            
-            ### Compute Keys and Values on our Text Embeddings ###
-            k = self.k_proj(src).reshape(batch, src_len, self.num_heads, self.head_dim).transpose(1,2).contiguous()
-            v = self.v_proj(src).reshape(batch, src_len, self.num_heads, self.head_dim).transpose(1,2).contiguous()
+        ### Key/Value Projections on Text ###
+        batch, context_len, embed_dim = context.shape
+        k = self.k_proj(context).reshape(batch, context_len, self.num_heads, self.head_dim).transpose(1,2).contiguous()
+        v = self.v_proj(context).reshape(batch, context_len, self.num_heads, self.head_dim).transpose(1,2).contiguous()
 
-            ### This is our src attention mask (on the text encoding) ###
-            if attention_mask is not None:
-                attention_mask = attention_mask.bool()
-                attention_mask = attention_mask.unsqueeze(1).unsqueeze(1).repeat(1,1,tgt_len,1)
+        ### This is our text attention mask ###
+        if attention_mask is not None:
+            attention_mask = attention_mask.bool()
+            attention_mask = attention_mask.unsqueeze(1).unsqueeze(1).repeat(1,1,num_patches,1)
 
-            attention_out = F.scaled_dot_product_attention(q,k,v,
-                                                           attn_mask=attention_mask, 
-                                                           dropout_p=self.attn_dropout if self.training else 0.0, 
-                                                           is_causal=False)
-
-        ### Reshape and Project ###
+        attention_out = F.scaled_dot_product_attention(q,k,v,
+                                                       attn_mask=attention_mask, 
+                                                       dropout_p=self.attn_dropout if self.training else 0.0)
+        
+        ### Reshape back to (B, num_patches, head_dim) and Project with Linear ###
         attention_out = attention_out.transpose(1,2).flatten(2)
         attention_out = self.out_proj(attention_out)
 
+        return attention_out
+
+    def forward(self, 
+                x, 
+                context=None, 
+                attention_mask=None):
+
+        residual = x 
+
+        if context is None:
+            attention_out = self.forward_self_attn(x)
+        else:
+            attention_out = self.forward_cross_attn(x, context, attention_mask)
+        
         ### Return Back to Image Dimensions (B x H*W x C) -> (B x C x H x W) ###
         output = self._seq2img(attention_out)
 
@@ -333,81 +451,8 @@ class Attention(nn.Module):
 
         return output
 
-class AttentionResidualBlock(nn.Module):
-    def __init__(self, 
-                 in_channels, 
-                 dropout_p = 0.0, 
-                 num_layers = 1,
-                 groupnorm_groups = 32,
-                 time_embed_proj = False, 
-                 time_embed_dim = 128,
-                 norm_eps=1e-6,
-                 attention_head_dim=1,
-                 attention_residual_connection=True):
-        
-        super(AttentionResidualBlock, self).__init__()
-        
-        self.resnets = nn.ModuleList()
-        self.attentions = nn.ModuleList()
 
-        ### There is Always One Residual Block ###
-        self.resnets.append(
-            ResidualBlock(
-                 in_channels=in_channels, 
-                 out_channels=in_channels, 
-                 dropout_p=dropout_p, 
-                 groupnorm_groups=groupnorm_groups,
-                 time_embed_proj=time_embed_proj, 
-                 time_embed_dim=time_embed_dim,
-                 norm_eps=norm_eps
-            )
-        )
 
-        ### For Every Layer, Create an Attention + Residual Block Stack ###
-        for _ in range(num_layers):
-
-            self.attentions.append(
-                Attention(
-                    embedding_dimension=in_channels,
-                    head_dim=attention_head_dim,
-                    attn_dropout=dropout_p,
-                    attention_residual_connection=attention_residual_connection
-                )
-            )
-
-            self.resnets.append(
-                ResidualBlock(
-                    in_channels=in_channels, 
-                    out_channels=in_channels, 
-                    dropout_p=dropout_p, 
-                    groupnorm_groups=groupnorm_groups,
-                    time_embed_proj=time_embed_proj, 
-                    time_embed_dim=time_embed_dim,
-                    norm_eps=norm_eps
-                )
-            )
-
-    def forward(self, 
-                x, 
-                time_embed=None, 
-                text_embed=None, 
-                attention_mask=None):
-
-        x = self.resnets[0](x, time_embed=time_embed)
-
-        for attn, res in zip(self.attentions, self.resnets[1:]):
-            
-            ### If we dont have text, then we are doing Self-Attenion on our Images as src ###
-            if text_embed is None:
-                x = attn(src=x)
-            
-            ### If we do have text, then we are doing cross attention with text as src and images as tgt ###
-            else:
-                x = attn(src=text_embed, tgt=x, attention_mask=attention_mask)
-
-            x = res(x, time_embed)
-        
-        return x
 
 
 
