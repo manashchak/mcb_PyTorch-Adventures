@@ -9,8 +9,9 @@ class LDMConfig:
     out_channels: int = 3
     downsample_factor: int = 8
     latent_channels: int = 4
-    norm_num_groups: int = 32
+    groupnorm_groups: int = 32
     layers_per_block: int = 2
-    channels_per_block: Tuple = (128, 256, 512, 512) # num_downs = len(channels_out) - 1
+    channels_per_block: Tuple = (128, 256, 512, 512)
+    dropout: float = 0.0
 
 

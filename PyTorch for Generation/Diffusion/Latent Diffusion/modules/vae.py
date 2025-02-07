@@ -11,8 +11,7 @@ class VAEEncoder(nn.Module):
                  channels_per_block = (128, 256, 512, 512),
                  layers_per_block = 2,
                  dropout_p=0.0, 
-                 groupnorm_groups=32, 
-                 num_residual_blocks=2):
+                 groupnorm_groups=32):
         
         super(VAEEncoder, self).__init__()
 
@@ -42,7 +41,7 @@ class VAEEncoder(nn.Module):
                     out_channels=output_channels, 
                     dropout_p=dropout_p,
                     groupnorm_groups=groupnorm_groups, 
-                    num_residual_blocks=num_residual_blocks,
+                    num_residual_blocks=self.layers_per_block,
                     time_embed_proj=False,
                     add_downsample=not is_final_block, 
                 )
@@ -91,8 +90,7 @@ class VAEDecoder(nn.Module):
                  channels_per_block = (128, 256, 512, 512),
                  layers_per_block = 2,
                  dropout_p=0.0, 
-                 groupnorm_groups=32, 
-                 num_residual_blocks=2):
+                 groupnorm_groups=32):
         
         super(VAEDecoder, self).__init__()
 
@@ -133,7 +131,7 @@ class VAEDecoder(nn.Module):
                     out_channels=output_channels, 
                     dropout_p=dropout_p,
                     groupnorm_groups=groupnorm_groups, 
-                    num_residual_blocks=num_residual_blocks,
+                    num_residual_blocks=self.layers_per_block,
                     time_embed_proj=False,
                     add_upsample=not is_final_block, 
                 )
@@ -163,9 +161,51 @@ class VAEDecoder(nn.Module):
         x = self.conv_out(x)
 
         return x
+
+class EncoderDecoder(nn.Module):
+    def __init__(self, config):
+
+        super(EncoderDecoder, self).__init__()
+
+        self.config = config
+
+        self.encoder = VAEEncoder(in_channels=config.in_channels, 
+                                  out_channels=config.latent_channels, 
+                                  channels_per_block=config.channels_per_block,
+                                  layers_per_block=config.layers_per_block, 
+                                  dropout_p=config.dropout,
+                                  groupnorm_groups=config.groupnorm_groups)
+        
+        self.decoder = VAEDecoder(in_channels=config.latent_channels, 
+                                  out_channels=config.out_channels, 
+                                  channels_per_block=config.channels_per_block,
+                                  layers_per_block=config.layers_per_block, 
+                                  dropout_p=config.dropout,
+                                  groupnorm_groups=config.groupnorm_groups)
+
+    def forward_enc(self, x):
+        return self.encoder(x)
+    
+    def forward_dec(self, x):
+        return self.decoder(x)
+    
+class VAE(EncoderDecoder):
+    
+    def __init__(self, config):
+        super(VAE, self).__init__()
+
+    def kl_loss(self):
+        pass
+    
+class VQVAE(EncoderDecoder):
+    pass
+
+
     
 
-class VAE(nn.Module):
-    def __init__(self, config)
-        
-        encoder = self.
+if __name__ == "__main__":
+
+    config = LDMConfig()
+    model = VAE(config)
+
+    print(model)
