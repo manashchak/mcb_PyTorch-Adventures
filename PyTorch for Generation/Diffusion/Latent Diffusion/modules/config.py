@@ -24,9 +24,15 @@ class LDMConfig:
     vae_up_down_factor: int = 2
     vae_up_down_kernel_size: int = 3
 
-    ### Quantization ###
-    quantize = False
-    codebook_size = 16384
+    ### Quantization Config ###
+    quantize: bool = False
+    codebook_size: int = 10
+    vq_embed_dim: float = 4
+    beta: float = 0.25
+
+    ### VAE Scaling ###
+    vae_scale_factor: float = None
+    
 
     ###################
     ### UNET CONFIG ###

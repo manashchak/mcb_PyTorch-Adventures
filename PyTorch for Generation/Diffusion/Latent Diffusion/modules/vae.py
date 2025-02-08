@@ -18,8 +18,7 @@ class VAEAttentionResidualBlock(nn.Module):
         - dropout_p: What dropout probability do you want to use?
         - num_layers: How many iterations of Attention/ResidualBlocks do you want?
         - groupnorm_groups: How many groups in the GroupNormalization
-        - norm_eps: eps for GroupNorm
-        - attention_head_dim: Embed Dim for each head of attention
+        - norm_eps: eppassead_dim: Embed Dim for each head of attention
         - attention_residual_connections: Do you want a residual connection in Attention?
     
     """
@@ -348,27 +347,236 @@ class EncoderDecoder(nn.Module):
     
 class VAE(EncoderDecoder):
     
+    """
+    Variational AutoEncoder as Described in Auto-Encoding Variational Bayes
+    https://arxiv.org/pdf/1312.6114
+
+        - forward method is for training our VAE
+        - encode/decode is scaled and is for Diffusion Training
+    """
+
     def __init__(self, config):
         super(VAE, self).__init__(config=config)
+
+        self.config = config
     
-    def kl_loss(self):
-        pass
+    def kl_loss(self, mean, logvar):
+        
+        var = torch.exp(logvar)
+
+        ### Add the KL Loss Across the Channel, Height, Width ###
+        kl_loss = -0.5 * torch.sum(
+            1 + logvar - mean**2 - var, 
+            dim=[1,2,3]
+        )
+
+        ### Average Across the Batch ###
+        kl_loss = kl_loss.mean()
+
+        return kl_loss  
+
+    def sample_z(self, mu, logvar):
+        
+        ### Compute sigma from logvar ###
+        sigma = torch.exp(0.5 * logvar)
+
+        ### Sample Standard Gaussian Noise ###
+        noise = torch.randn_like(sigma, device=sigma.device, dtype=sigma.dtype)
+        
+        ### Reparameterization Trick ###
+        z = mu + sigma * noise
+        
+        return z
+    
+    def encode(self, 
+               x, 
+               return_stats=False,
+               scale_factor=None):
+        
+        ### Encode to (B x 2*L x H x W) ###
+        encoded = self.forward_enc(x)
+        
+        ### Chunk Channel Dimension for Mean and Log Var ###
+        mu, logvar = torch.chunk(encoded, chunks=2, dim=1)
+        
+        ### Clamp Logvar so when we exponentiate later, no numerical instability ###
+        logvar = torch.clamp(logvar, min=-30.0, max=20.0)
+
+        ### Sample Noise from Predicted Distribution ###
+        z = self.sample_z(mu, logvar) 
+        
+        ### Scale z with constant for unit variance ###
+        ### We have to calculate this constant ourselves after
+        ### training the VAE ###
+        if scale_factor is None:
+            if self.config.vae_scale_factor is not None:
+                scale_factor = self.config.vae_scale_factor
+            else:
+                scale_factor = 1
+
+        z = z * scale_factor
+
+        output = (z, )
+
+        if return_stats:
+            output += (mu, logvar)
+
+        return output
+
+    def decode(self, z, scale_factor=None):
+
+        x = self.forward_dec(z)
+        
+        ### Unscale the Embeddings by the scale_factor ###
+        if scale_factor is None:
+            if self.config.vae_scale_factor is not None:
+                scale_factor = self.config.vae_scale_factor
+            else:
+                scale_factor = 1
+
+        x = x / scale_factor
+        
+        return x
     
     def forward(self, x):
-        
-        encoded = self.forward_enc(x)
-        print(encoded.shape)
+
+        ### Encode and get Statistics ###
+        posterior, mu, logvar = self.encode(x, return_stats=True)
+
+        ### Reconstruct w/ Decoder ###
+        reconstruction = self.forward_dec(posterior)
+
+        ### Compute KL Loss ###
+        kl_loss = self.kl_loss(mu, logvar)
+
+        return {"posterior": posterior, 
+                "reconstruction": reconstruction, 
+                "kl_loss": kl_loss}
+
 
 class VQVAE(EncoderDecoder):
-    pass
 
+    """
+    Vector-Quantized Variational AutoEncoder as described in 
+    Neural Discrete Representation Learning
+    https://arxiv.org/abs/1711.00937
+    """
 
-    
+    def __init__(self, config):
+        super(VQVAE, self).__init__(config=config)
+
+        self.config = config
+
+        ### Projections To/From VQ Embed Dim ###
+        self.conv_quantize_proj = nn.Conv2d(config.latent_channels, 
+                                            config.vq_embed_dim, 
+                                            kernel_size=1,
+                                            stride=1)
+        
+        self.conv_latent_proj = nn.Conv2d(config.vq_embed_dim,
+                                          config.latent_channels, 
+                                          kernel_size=1,
+                                          stride=1)
+
+        ### Quantization Codebook ###
+        self.embedding = nn.Embedding(config.codebook_size, config.vq_embed_dim)
+        self.embedding.weight.data.uniform_(-1.0 / config.codebook_size, 1.0 / config.codebook_size)
+
+    def quantize(self, z, compute_loss=False, compute_perplexity=False):
+
+        ### Reshape to (B*H*W x E) ###
+        z = z.permute(0,2,3,1)
+        z_flattened = z.reshape(-1, config.vq_embed_dim)
+        
+        ### Compute Distance Between Each Embedding and Codevectors ###
+        pairwise_dist = torch.cdist(z_flattened, self.embedding.weight)
+        
+        ### For each of our input vectors find the index of the closest codevector ###
+        closest = torch.argmin(pairwise_dist, dim=-1)
+   
+        ### Index our Embedding Matrix to grab cooresponding codevectors ###
+        quantized = self.embedding(closest).reshape(*z.shape)
+        
+        ### Compute CodeBook and Commitment Loss ###
+        if compute_loss:
+            codebook_loss = torch.mean((quantized - z.detach())**2)
+            commitment_loss = torch.mean((quantized.detach() - z)**2)
+            loss = codebook_loss + config.beta * commitment_loss
+
+        ### Compute Codebook Perplexity ###
+        if compute_perplexity:
+
+            ### One Hot Encode Index ###
+            one_hot_closest = torch.zeros(closest.shape[0], config.codebook_size)
+            one_hot_closest[list(range(closest.shape[0])), closest] = 1
+            util_proportion = torch.mean(one_hot_closest, dim=0)
+
+            ### Compute Perplexity ###
+            perplexity = torch.exp(-torch.sum(util_proportion * torch.log(util_proportion + 1e-8)))
+
+        ### Copy Gradients (Straight Through Estimator) ###
+        quantized = z + (quantized - z).detach()
+
+        ### Permute Back to Original Image Shape (B,C,H,W) ###
+        quantized = quantized.permute(0,3,2,1)
+
+        return_output = (quantized,)
+
+        if compute_loss:
+            return_output += (codebook_loss, commitment_loss, loss)
+        if compute_perplexity:
+            return_output += (perplexity,)
+
+        return return_output
+
+    def encode(self, x):
+        
+        x = self.forward_enc(x)
+
+        z = self.conv_quantize_proj(x) 
+
+        return self.quantize(z)
+
+    def decode(self, z):
+        
+        x = self.conv_latent_proj(z)
+
+        x = self.forward_dec(x)
+
+        return x
+
+    def forward(self, x):
+        
+        ### Encode ###
+        x = self.forward_enc(x)
+        
+        ### Project to Quantized Dimension ###
+        z = self.conv_quantize_proj(x)
+
+        ### Quantize Embeddings ###
+        quantized, codebook_loss, commitment_loss, loss, perplexity = self.quantize(z, 
+                                                                                    compute_loss=True,
+                                                                                    compute_perplexity=True)
+
+        ### Project Quantized Back to Latent Dimension ###
+        x = self.conv_latent_proj(quantized)
+
+        ### Decode ###
+        reconstruction = self.forward_dec(x)
+
+        return {"quantized": quantized, 
+                "reconstruction": reconstruction,
+                "codebook_loss": codebook_loss, 
+                "commitment_loss": commitment_loss, 
+                "loss": loss,
+                "perplexity": perplexity}
+
 
 if __name__ == "__main__":
 
-    config = LDMConfig()
-    model = VAE(config)
+    config = LDMConfig(quantize=True)
+    model = VQVAE(config)
 
     rand = torch.randn(4,3,256,256)
-    model(rand)
+    output = model(rand)
+    print(output)
