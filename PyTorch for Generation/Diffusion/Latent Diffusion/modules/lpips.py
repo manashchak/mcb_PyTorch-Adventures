@@ -162,9 +162,32 @@ class LPIPS(nn.Module):
 
 class ComputeLogits(nn.Module):
 
-    def __init__(self, chn_mid=32, use_sigmoid=True):
+    def __init__(self, middle_channels=32, use_sigmoid=True):
 
+        self.model = nn.Sequential(
+            [
+                nn.Conv2d(5, middle_channels, kernel_size=1, stride=1, padding=0), 
+                nn.LeakyReLU(0.2, inplace=True),
+                nn.Conv2d(middle_channels, middle_channels, kernel_size=1, stride=1, padding=0), 
+                nn.LeakyReLU(0.2, inplace=True), 
+                nn.Conv2d(middle_channels, 1, kernel_size=1, stride=1, padding=0),
+                nn.Sigmoid()
+            ]
+        )
+
+    def forward(self, diff0, diff1, eps=0.1):
         
+        ### Difference Feature ### 
+        difference = diff0 - diff1
+
+        ### Ratio Features ###
+        ratio1 = diff0 / (diff1 + eps)
+        ratio2 = diff1 / (diff0 + eps)
+
+        ### Concat Features ([B,1,1,1], [B,1,1,1], ...) -> (B,5,1,1)###
+        concat = torch.cat([diff0, diff1, difference, ratio1, ratio2], dim=1)
+
+        return self.model(concat)
 
             
 
