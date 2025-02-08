@@ -26,7 +26,7 @@ class LDMConfig:
 
     ### Quantization Config ###
     quantize: bool = False
-    codebook_size: int = 10
+    codebook_size: int = 16384
     vq_embed_dim: float = 4
     beta: float = 0.25
 
