@@ -70,7 +70,8 @@ class Attention(nn.Module):
                  attn_dropout=0.0,
                  groupnorm_groups=None,
                  attention_residual_connection=True,
-                 bias=True):
+                 bias=True,
+                 return_shape="1D"):
         
         super(Attention, self).__init__()
 
@@ -79,6 +80,10 @@ class Attention(nn.Module):
         self.attn_dropout = attn_dropout
         self.attn_residual = attention_residual_connection
         self.groupnorm_groups = groupnorm_groups
+
+        if return_shape not in ["1D", "2D"]:
+            raise Exception("Attention can output '1D' or '2D'")
+        self.return_shape = return_shape
 
         ### Attention Head Dim ###
         self.head_dim = head_dim
@@ -165,6 +170,7 @@ class Attention(nn.Module):
                 context=None, 
                 attention_mask=None):
 
+        ### x can be 1D or 2D ###
         residual = x 
 
         if self.groupnorm_groups is not None:
@@ -174,8 +180,23 @@ class Attention(nn.Module):
             attention_out = self.forward_self_attn(x)
         else:
             attention_out = self.forward_cross_attn(x, context, attention_mask)
-
+        
+        ### attention_out is always 1d ###
         if self.attn_residual:
+            
+            ### If residual shape doesnt match attention_out
+            ### then the residuals must be (B,C,H,W), so we can
+            ### reshape based on the output shape we want
+            if len(attention_out.shape) != len(residual.shape):
+                
+                ### If we want a 1D output, flatten the residual before adding
+                if self.return_shape == "1D":
+                    residual, _ = img2seq(residual)
+                
+                ### If we want a 2D output, reshape the attention_out before adding
+                elif self.return_shape == "2D":
+                    attention_out = seq2img(attention_out)
+
             attention_out = attention_out + residual
 
         return attention_out

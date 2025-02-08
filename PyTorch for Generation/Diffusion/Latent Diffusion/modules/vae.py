@@ -58,7 +58,8 @@ class VAEAttentionResidualBlock(nn.Module):
                     embedding_dimension=in_channels,
                     head_dim=attention_head_dim,
                     attn_dropout=dropout_p,
-                    attention_residual_connection=attention_residual_connection
+                    attention_residual_connection=attention_residual_connection,
+                    return_shape="2D"
                 )
             )
 
@@ -348,10 +349,15 @@ class EncoderDecoder(nn.Module):
 class VAE(EncoderDecoder):
     
     def __init__(self, config):
-        super(VAE, self).__init__()
-
+        super(VAE, self).__init__(config=config)
+    
     def kl_loss(self):
         pass
+    
+    def forward(self, x):
+        
+        encoded = self.forward_enc(x)
+        print(encoded.shape)
 
 class VQVAE(EncoderDecoder):
     pass
@@ -362,7 +368,7 @@ class VQVAE(EncoderDecoder):
 if __name__ == "__main__":
 
     config = LDMConfig()
-    model = EncoderDecoder(config)
-    print(model)
+    model = VAE(config)
+
     rand = torch.randn(4,3,256,256)
-    print(model.forward_enc(rand).shape)
+    model(rand)
