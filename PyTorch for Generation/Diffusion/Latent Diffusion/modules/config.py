@@ -9,6 +9,7 @@ class LDMConfig:
     ######################################
     
     ### Input/Latent/Output Channels ###
+    img_size: int = 256
     in_channels: int = 3
     out_channels: int = 3
     latent_channels: int = 4
@@ -38,9 +39,9 @@ class LDMConfig:
 
     ### UNET Parts Config ###
     down_block_types: Tuple = ("Down", "AttnDown", "AttnDown", "AttnDown")
-    mid_block_types: Tuple = "MidBlock2D"
+    mid_block_types: str = "AttnMid"
     up_block_types: Tuple = ("Up", "AttnUp", "AttnUp", "AttnUp")
-    unet_channels_per_block: Tuple = (224, 448, 768, 896)
+    unet_channels_per_block: Tuple = (320, 640, 1280, 1280)
     unet_residual_layers_per_block: int = 2
     downsample_factor: int = 2
     downsample_kernel_size: int = 3

@@ -134,7 +134,7 @@ class Attention(nn.Module):
                            images, 
                            context,
                            attention_mask=None):
-        
+
         images, num_patches = self._check_for_reshape(images)
 
         ### Query Projection on Images ###
@@ -388,7 +388,7 @@ class TransformerBlock2D(nn.Module):
                                   padding=0)
         
     def forward(self, x, context=None, attention_mask=None):
-        
+
         ### Normalize and Project to Wanted Embed Dim ###
         x = self.norm(x)
         x = self.proj_in(x)
