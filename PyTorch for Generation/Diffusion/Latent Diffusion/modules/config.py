@@ -15,19 +15,14 @@ class LDMConfig:
     latent_channels: int = 4
 
     ### Encoder Config ###
-    encoder_residual_layers_per_block: int = 2
-    encoder_attention_layers: int = 1
-    encoder_attention_residual_connections: bool = True
-
-    ### Decoder Config ###
-    decoder_residual_layers_per_block: int = 3
-    decoder_attention_layers: int = 1
-    decoder_attention_residual_connections: bool = True
+    residual_layers_per_block: int = 2
+    attention_layers: int = 1
+    attention_residual_connections: bool = True
 
     ### Block Config ###
     vae_channels_per_block: Tuple = (128, 256, 512, 512)
-    factor: int = 2
-    kernel_size: int = 3
+    vae_up_down_factor: int = 2
+    vae_up_down_kernel_size: int = 3
 
     ### Quantization ###
     quantize = False
@@ -38,13 +33,13 @@ class LDMConfig:
     ###################
 
     ### UNET Parts Config ###
-    down_block_types: Tuple = ("Down", "AttnDown", "AttnDown", "AttnDown")
-    mid_block_types: str = "AttnMid"
-    up_block_types: Tuple = ("Up", "AttnUp", "AttnUp", "AttnUp")
+    down_block_types: Tuple = ("AttnDown", "AttnDown", "AttnDown", "Down") # AttnDown/Down
+    mid_block_types: str = "AttnMid"                                       # AttnMid/Mid
+    up_block_types: Tuple = ("Up", "AttnUp", "AttnUp", "AttnUp")           # AttnUp/Up
     unet_channels_per_block: Tuple = (320, 640, 1280, 1280)
     unet_residual_layers_per_block: int = 2
-    downsample_factor: int = 2
-    downsample_kernel_size: int = 3
+    unet_up_down_factor: int = 2
+    unet_up_down_kernel_size: int = 3
 
     ### Time Embeddings Config ###
     time_embed_start_dim: int = 320
@@ -57,12 +52,13 @@ class LDMConfig:
     attention_head_dim: int = 8
 
     ### Text Embeddings Config ###
+    text_conditioning: bool = True
     text_embed_dim: int = 768
 
     ######################
     ### GENERAL CONFIG ###
     ######################
-    groupnorm_groups: int = 2
+    groupnorm_groups: int = 32
     norm_eps: float = 1e-6
     dropout: float = 0.0
 

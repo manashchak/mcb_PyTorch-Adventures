@@ -316,28 +316,28 @@ class EncoderDecoder(nn.Module):
 
         self.encoder = VAEEncoder(in_channels=config.in_channels, 
                                   out_channels=config.latent_channels, 
-                                  double_z=not config.quantize
+                                  double_z=not config.quantize,
                                   channels_per_block=config.vae_channels_per_block,
-                                  residual_layers_per_block=config.encoder_residual_layers_per_block, 
-                                  num_attention_layers=config.encoder_attention_layers,
-                                  attention_residual_connections=config.encoder_attention_residual_connections,
+                                  residual_layers_per_block=config.residual_layers_per_block, 
+                                  num_attention_layers=config.attention_layers,
+                                  attention_residual_connections=config.attention_residual_connections,
                                   dropout_p=config.dropout,
                                   groupnorm_groups=config.groupnorm_groups,
                                   norm_eps=config.norm_eps, 
-                                  downsample_factor=config.factor, 
-                                  downsample_kernel_size=config.kernel_size)
+                                  downsample_factor=config.vae_up_down_factor, 
+                                  downsample_kernel_size=config.vae_up_down_kernel_size)
         
         self.decoder = VAEDecoder(in_channels=config.latent_channels, 
                                   out_channels=config.out_channels, 
                                   channels_per_block=config.vae_channels_per_block,
-                                  residual_layers_per_block=config.decoder_residual_layers_per_block, 
-                                  num_attention_layers=config.decoder_attention_layers,
-                                  attention_residual_connections=config.decoder_attention_residual_connections,
+                                  residual_layers_per_block=config.residual_layers_per_block + 1, 
+                                  num_attention_layers=config.attention_layers,
+                                  attention_residual_connections=config.attention_residual_connections,
                                   dropout_p=config.dropout,
                                   groupnorm_groups=config.groupnorm_groups,
                                   norm_eps=config.norm_eps, 
-                                  upsample_factor=config.factor, 
-                                  upsample_kernel_size=config.kernel_size)
+                                  upsample_factor=config.vae_up_down_factor, 
+                                  upsample_kernel_size=config.vae_up_down_kernel_size)
         
     def forward_enc(self, x):
         return self.encoder(x)

@@ -6,6 +6,27 @@ from transformer import TransformerBlock2D
 from config import LDMConfig
 
 class DownBlock2D(nn.Module):
+
+    """
+    UNet2D Encoder Block that stores the skip connections 
+
+    Args:
+        in_channels: Number of input channels to the block
+        out_channels: Number of output channels from the block
+        attention: Do you want a Transformer Block
+        num_attention_heads: Number of attention heads in Attention computation
+        cross_attention_dim: Text (context) embed dimension (if None, cross attention turned off)
+        time_embed_dim: Input time embedding dimension
+        dropout: What dropout probability do you want
+        num_layers: How many Residual/Attention blocks do you want in this block
+        transformers_per_layer: How many transformer layers do you want inside the transformer block
+        attention_bias: Do you want QKV projections to have a bias?
+        norm_eps: Groupnorm eps
+        groupnorm_groups: How many groups in groupnorm
+        add_downsample: Do you want a downsample layer?
+        downsample_factor: By what factor do you want to downsample
+        downsample_kernel_size: What kernel size for the downsampling convolution
+    """
     
     def __init__(self, 
                  in_channels, 
@@ -95,6 +116,25 @@ class DownBlock2D(nn.Module):
         return x, skip_connection_outputs
     
 class MidBlock2D(nn.Module):
+
+    """
+    UNet2D Mid Block (BottleNeck of the UNet) 
+
+    Args:
+        in_channels: Number of input channels to the block
+        out_channels: Number of output channels from the block
+        attention: Do you want a Transformer Block
+        num_attention_heads: Number of attention heads in Attention computation
+        cross_attention_dim: Text (context) embed dimension (if None, cross attention turned off)
+        time_embed_dim: Input time embedding dimension
+        dropout: What dropout probability do you want
+        num_layers: How many Residual/Attention blocks do you want in this block
+        transformers_per_layer: How many transformer layers do you want inside the transformer block
+        attention_bias: Do you want QKV projections to have a bias?
+        norm_eps: Groupnorm eps
+        groupnorm_groups: How many groups in groupnorm
+    """
+
     
     def __init__(self, 
                  in_channels, 
@@ -183,6 +223,28 @@ class MidBlock2D(nn.Module):
         return x
 
 class UpBlock2D(nn.Module):
+
+    """
+    UNet2D Decoder Block that concatenates skip connections from DownBlock2D
+    onto decoded tensors
+
+    Args:
+        in_channels: Number of input channels to the block
+        out_channels: Number of output channels from the block
+        attention: Do you want a Transformer Block
+        num_attention_heads: Number of attention heads in Attention computation
+        cross_attention_dim: Text (context) embed dimension (if None, cross attention turned off)
+        time_embed_dim: Input time embedding dimension
+        dropout: What dropout probability do you want
+        num_layers: How many Residual/Attention blocks do you want in this block
+        transformers_per_layer: How many transformer layers do you want inside the transformer block
+        attention_bias: Do you want QKV projections to have a bias?
+        norm_eps: Groupnorm eps
+        groupnorm_groups: How many groups in groupnorm
+        add_upsample: Do you want a upsample layer?
+        upsample_factor: By what factor do you want to upsample
+        upsample_kernel_size: What kernel size for the upsampling convolution
+    """
     
     def __init__(self, 
                  in_channels, 
@@ -337,7 +399,18 @@ class UpBlock2D(nn.Module):
 
         return x
 
+
 class UNet2DModel(nn.Module): 
+
+    """
+    UNet2D Model w/ Temporal Embeddings for Diffusion
+
+    A lot of code inspiration was taken from diffusers/unet!
+    https://github.com/huggingface/diffusers/tree/main/src/diffusers/models/unets
+
+
+    """
+    
     def __init__(self, config):
         super(UNet2DModel, self).__init__()
 
@@ -364,7 +437,7 @@ class UNet2DModel(nn.Module):
                                 out_channels=output_channels, 
                                 attention=enc_use_attention,
                                 num_attention_heads=output_channels//config.attention_head_dim,
-                                cross_attention_dim=config.text_embed_dim,
+                                cross_attention_dim=config.text_embed_dim if config.text_conditioning else None,
                                 time_embed_dim=config.time_embed_proj_dim, 
                                 dropout=config.dropout,  
                                 num_layers=config.unet_residual_layers_per_block, 
@@ -374,8 +447,8 @@ class UNet2DModel(nn.Module):
                                 norm_eps=config.norm_eps, 
                                 groupnorm_groups=config.groupnorm_groups, 
                                 add_downsample=not is_final_block,
-                                downsample_factor=config.downsample_factor,
-                                downsample_kernel_size=config.downsample_kernel_size)
+                                downsample_factor=config.unet_up_down_factor,
+                                downsample_kernel_size=config.unet_up_down_kernel_size)
 
             self.down_blocks.append(block)
 
@@ -386,11 +459,9 @@ class UNet2DModel(nn.Module):
                                     out_channels=channels,
                                     attention=mid_use_attention,
                                     num_attention_heads=channels//config.attention_head_dim,
-                                    cross_attention_dim=config.text_embed_dim,
+                                    cross_attention_dim=config.text_embed_dim if config.text_conditioning else None,
                                     time_embed_dim=config.time_embed_proj_dim, 
                                     dropout=config.dropout,  
-                                    num_layers=config.unet_residual_layers_per_block, 
-                                    transformers_per_layer=config.transformer_blocks_per_layer, 
                                     transformer_dim_mult=config.transformer_dim_mult,
                                     attention_bias=config.attention_bias,
                                     norm_eps=config.norm_eps, 
@@ -422,25 +493,23 @@ class UNet2DModel(nn.Module):
 
             dec_use_attention = (block_type == "AttnUp")
 
-            block = UpBlock2D(
-                 in_channels=input_channel, 
-                 out_channels=output_channels,
-                 prev_out_channels=prev_output_channel, 
-                 attention=dec_use_attention,
-                 num_attention_heads=output_channels//config.attention_head_dim,
-                 cross_attention_dim=config.text_embed_dim,
-                 time_embed_dim=config.time_embed_proj_dim, 
-                 dropout=config.dropout,  
-                 num_layers=config.unet_residual_layers_per_block + 1, 
-                 transformers_per_layer=config.transformer_blocks_per_layer, 
-                 transformer_dim_mult=config.transformer_dim_mult,
-                 attention_bias=config.attention_bias,
-                 norm_eps=config.norm_eps, 
-                 groupnorm_groups=config.groupnorm_groups, 
-                 add_upsample=not is_final_block,
-                 upsample_factor=config.factor,
-                 upsample_kernel_size=3
-            )
+            block = UpBlock2D(in_channels=input_channel, 
+                              out_channels=output_channels,
+                              prev_out_channels=prev_output_channel, 
+                              attention=dec_use_attention,
+                              num_attention_heads=output_channels//config.attention_head_dim,
+                              cross_attention_dim=config.text_embed_dim if config.text_conditioning else None,
+                              time_embed_dim=config.time_embed_proj_dim, 
+                              dropout=config.dropout,  
+                              num_layers=config.unet_residual_layers_per_block + 1, 
+                              transformers_per_layer=config.transformer_blocks_per_layer, 
+                              transformer_dim_mult=config.transformer_dim_mult,
+                              attention_bias=config.attention_bias,
+                              norm_eps=config.norm_eps, 
+                              groupnorm_groups=config.groupnorm_groups, 
+                              add_upsample=not is_final_block,
+                              upsample_factor=config.unet_up_down_factor,
+                              upsample_kernel_size=config.unet_up_down_kernel_size)
 
             self.up_blocks.append(block)
 
@@ -497,14 +566,15 @@ if __name__ == "__main__":
 
     config = LDMConfig()
     model = UNet2DModel(config)
+    # print(model.up_blocks)
 
     total = 0
-    for param in model.parameters():
+    for param in model.up_blocks.parameters():
         total += param.numel()
     print(total)
     rand = torch.randn(4,4,32,32)
     time = torch.randn(4,1280)
     context = torch.randn(4,30,768)
     
-    model(rand, time, context=context)
-        
+    out = model(rand, time, context=context)
+    print(out.shape)
