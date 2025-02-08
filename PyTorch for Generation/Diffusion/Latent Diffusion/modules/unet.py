@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from layers import ResidualBlock2D, DownSampleBlock2D, UpSampleBlock2D
 from transformer import TransformerBlock2D
-from config import LDMConfig
 
 class DownBlock2D(nn.Module):
 
@@ -560,21 +559,3 @@ class UNet2DModel(nn.Module):
         x = self.conv_out(x)
 
         return x
-
-
-if __name__ == "__main__":
-
-    config = LDMConfig()
-    model = UNet2DModel(config)
-    # print(model.up_blocks)
-
-    total = 0
-    for param in model.up_blocks.parameters():
-        total += param.numel()
-    print(total)
-    rand = torch.randn(4,4,32,32)
-    time = torch.randn(4,1280)
-    context = torch.randn(4,30,768)
-    
-    out = model(rand, time, context=context)
-    print(out.shape)

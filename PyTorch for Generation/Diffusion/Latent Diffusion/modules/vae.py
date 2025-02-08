@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from layers import ResidualBlock2D, EncoderBlock2D, DecoderBlock2D
 from transformer import Attention
-from config import LDMConfig
 
 class VAEAttentionResidualBlock(nn.Module):
 
@@ -571,12 +570,3 @@ class VQVAE(EncoderDecoder):
                 "loss": loss,
                 "perplexity": perplexity}
 
-
-if __name__ == "__main__":
-
-    config = LDMConfig(quantize=True)
-    model = VQVAE(config)
-
-    rand = torch.randn(4,3,256,256)
-    output = model(rand)
-    print(output)
