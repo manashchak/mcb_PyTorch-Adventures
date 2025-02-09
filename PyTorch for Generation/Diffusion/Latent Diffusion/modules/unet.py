@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from layers import ResidualBlock2D, DownSampleBlock2D, UpSampleBlock2D
-from transformer import TransformerBlock2D
+from .layers import ResidualBlock2D, DownSampleBlock2D, UpSampleBlock2D
+from .transformer import TransformerBlock2D
 
 class DownBlock2D(nn.Module):
 

@@ -1,5 +1,11 @@
+"""
+LPIPS Implementation heavily inspired by 
+https://github.com/richzhang/PerceptualSimilarity/blob/master/lpips/lpips.py
+"""
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torchvision.models import vgg16, VGG16_Weights
 
 class LPIPS(nn.Module):
@@ -17,7 +23,7 @@ class LPIPS(nn.Module):
                  pretrained_backbone=True,
                  train_backbone=False, 
                  use_dropout=True,
-                 img_range="-one_to_one"):
+                 img_range="minus_one_to_one"):
         
         super(LPIPS, self).__init__()
 
@@ -27,13 +33,13 @@ class LPIPS(nn.Module):
         self.img_range = img_range
 
         ### Load a Pretrained VGG BackBone and its Channel Pattern###
-        self.vgg_model = vgg16(weights=VGG16_Weights.IMAGENET1K_V1 if pretrained_backbone else None).features
+        vgg_model = vgg16(weights=VGG16_Weights.IMAGENET1K_V1 if pretrained_backbone else None).features
         self.channels = [64,128,256,512,512]
         self.layer_groups = [(0,3), (4,8), (9,15), (16,22), (23,29)]
 
         ### Turn of Gradients on Backbone ###
         if not train_backbone:
-            for param in self.vgg_model.parameters():
+            for param in vgg_model.parameters():
                 param.requires_grad_(False)
         
         ### Compute the Norm Constants ###
@@ -44,10 +50,13 @@ class LPIPS(nn.Module):
         for i, (start, end) in enumerate(self.layer_groups):
             layers = []
             for j in range(start, end+1):
-                layers.append(self.vgg_model[j])
+                layers.append(vgg_model[j])
             slices[f"slice{i+1}_layers"] = nn.Sequential(*layers)
 
         self.slices = nn.ModuleDict(slices)
+
+        ### Now that VGG16 is Sliced and Stored, Delete Original Model ###
+        del vgg_model
 
         ### Projections of Patches (B x C x H x W) -> (B x 1 x H x W) ###
         proj = {}
@@ -78,16 +87,16 @@ class LPIPS(nn.Module):
         
         return return_outputs
     
-    def scale_constants(self, range="-one_to_one"):
+    def scale_constants(self, range="minus_one_to_one"):
 
-        if range not in ["zero_to_one", "-one_to_one"]:
-            raise ValueError("Indicate if images are zero_to_one [0,1] or -one_to_one [-1,1]")
+        if range not in ["zero_to_one", "minus_one_to_one"]:
+            raise ValueError("Indicate if images are zero_to_one [0,1] or minus_one_to_one [-1,1]")
 
         imagenet_mean = torch.tensor([0.485, 0.456, 0.406])
         imagenet_std = torch.tensor([0.229, 0.224, 0.225])
 
         ### Imagenet Mean assumed [0,1] images, if [-1,1] we have to rescale ###
-        if range == "-one_to_one":
+        if range == "minus_one_to_one":
 
             ### If we double the range from [0,1] to [-1,1] we double the std ###
             imagenet_std = imagenet_std * 2
@@ -118,7 +127,7 @@ class LPIPS(nn.Module):
     def forward(self, input, target):
 
         ### If our Images are [0,1], scale to [-1,1] ###
-        if self.img_range != "-one_to_one":
+        if self.img_range != "minus_one_to_one":
             input = (input * 2) - 1
             target = (target * 2) - 1
 
@@ -153,53 +162,67 @@ class LPIPS(nn.Module):
             pooled_outs.append(pooled_out)
 
         ### Accumulate the Outputs Across Layers ###
-        ### val has shape (B,1,1,1)
-        val = torch.zeros_like(pooled_outs[0])
+        ### pooled has shape (B,1,1,1) so we can simply use convolutions
+        val = 0
         for pooled in pooled_outs:
             val = val + pooled
 
         return val
 
-class ComputeLogits(nn.Module):
+class DiffToLogits(nn.Module):
 
-    def __init__(self, middle_channels=32, use_sigmoid=True):
+    """
+    The output of LPIPS is a tensor of shape (B,1,1,1). This class takes in
+    two differences from LPIPS: (ref vs p0) and (ref vs p1)
+
+    We then compute some features from those differences:
+        - diff1 (ref vs p0)
+        - diff2 (ref vs p1)
+        - difference: (diff_0 vs diff_1) -> Difference of Differences
+        - ratio1: Ratio of diff1/diff2
+        - ratio2: Ratio of diff2/diff1
+
+    We can then concat all these features, providing us 5 features of differences
+
+    """
+
+    def __init__(self, middle_channels=32):
+
+        super(DiffToLogits, self).__init__()
 
         self.model = nn.Sequential(
-            [
+
                 nn.Conv2d(5, middle_channels, kernel_size=1, stride=1, padding=0), 
                 nn.LeakyReLU(0.2, inplace=True),
                 nn.Conv2d(middle_channels, middle_channels, kernel_size=1, stride=1, padding=0), 
                 nn.LeakyReLU(0.2, inplace=True), 
-                nn.Conv2d(middle_channels, 1, kernel_size=1, stride=1, padding=0),
-                nn.Sigmoid()
-            ]
+                nn.Conv2d(middle_channels, 1, kernel_size=1, stride=1, padding=0)
+
         )
 
-    def forward(self, diff0, diff1, eps=0.1):
+    def forward(self, diff1, diff2, eps=0.1):
         
         ### Difference Feature ### 
-        difference = diff0 - diff1
+        difference = diff1 - diff2
 
         ### Ratio Features ###
-        ratio1 = diff0 / (diff1 + eps)
-        ratio2 = diff1 / (diff0 + eps)
+        ratio1 = diff1 / (diff2 + eps)
+        ratio2 = diff2 / (diff1 + eps)
 
         ### Concat Features ([B,1,1,1], [B,1,1,1], ...) -> (B,5,1,1)###
-        concat = torch.cat([diff0, diff1, difference, ratio1, ratio2], dim=1)
+        concat = torch.cat([diff1, diff2, difference, ratio1, ratio2], dim=1)
 
         return self.model(concat)
 
-            
+# class BCERankingLoss(nn.Module):
+#     def __init__(self, middle_channels=32):
+#         super(BCERankingLoss, self).__init__()
 
-            
+#         self.model = DiffToLogits(middle_channels=middle_channels)
 
-
-
-            
-
-
-
-model = LPIPS()
-rand = torch.rand(4,3,224,224)
-ran2 = torch.rand(4,3,224,224)
-model(rand, ran2)
+#     def forward(self, diff1, diff2, targets):
+        
+#         logits = self.model(diff1, diff2)
+#         loss = F.binary_cross_entropy(logits, targets)
+        
+#         return loss

@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from layers import ResidualBlock2D, EncoderBlock2D, DecoderBlock2D
-from transformer import Attention
+from .layers import ResidualBlock2D, EncoderBlock2D, DecoderBlock2D
+from .transformer import Attention
 
 class VAEAttentionResidualBlock(nn.Module):
 
