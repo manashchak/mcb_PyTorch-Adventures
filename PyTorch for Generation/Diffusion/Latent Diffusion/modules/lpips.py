@@ -124,6 +124,9 @@ class LPIPS(nn.Module):
 
         return x
 
+    def load_checkpoint(self, path_to_checkpoint):
+        self.load_state_dict(torch.load(path_to_checkpoint, weights_only=True))
+
     def forward(self, input, target):
 
         ### If our Images are [0,1], scale to [-1,1] ###
