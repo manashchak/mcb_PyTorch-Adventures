@@ -23,7 +23,8 @@ class LPIPS(nn.Module):
                  pretrained_backbone=True,
                  train_backbone=False, 
                  use_dropout=True,
-                 img_range="minus_one_to_one"):
+                 img_range="minus_one_to_one",
+                 pretrained_weights=None):
         
         super(LPIPS, self).__init__()
 
@@ -69,6 +70,12 @@ class LPIPS(nn.Module):
 
         ### Spatial Pooling ###
         self.pool = nn.AdaptiveAvgPool2d((1,1))
+
+        ### Load Checkpoint ###
+        if pretrained_weights is not None:
+            print("Loading LPIPS Checkpoint:")
+            self.load_checkpoint(pretrained_weights)
+
 
     def forward_vgg(self, x):
 
