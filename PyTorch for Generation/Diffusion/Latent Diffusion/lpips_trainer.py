@@ -476,18 +476,5 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    # trainer(args)
+    trainer(args)
     eval(args)
-
-    
-
-    # # path_to_root = "/mnt/datadrive/data/bapps/2afc"
-    # # dataset = BAPPSDataset(path_to_root)
-    # # from torch.utils.data import DataLoader
-    # # loader = DataLoader(dataset, batch_size=4)
-
-    # # model = LPIPSForTraining()
-
-    # # for p0, p1, ref, judge in loader:
-    # #     model(p0, p1, ref, judge)
-    # #     break
