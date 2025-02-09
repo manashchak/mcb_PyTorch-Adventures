@@ -213,16 +213,3 @@ class DiffToLogits(nn.Module):
         concat = torch.cat([diff1, diff2, difference, ratio1, ratio2], dim=1)
 
         return self.model(concat)
-
-# class BCERankingLoss(nn.Module):
-#     def __init__(self, middle_channels=32):
-#         super(BCERankingLoss, self).__init__()
-
-#         self.model = DiffToLogits(middle_channels=middle_channels)
-
-#     def forward(self, diff1, diff2, targets):
-        
-#         logits = self.model(diff1, diff2)
-#         loss = F.binary_cross_entropy(logits, targets)
-        
-#         return loss
