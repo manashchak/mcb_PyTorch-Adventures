@@ -255,7 +255,26 @@ def training_config(parser):
                         default=1.0, 
                         type=float,
                         metavar="max_grad_norm")
+
+def text_captioning_config(parser):
+
+    parser.add_argument_group("Text Captioning Config")
+
+    parser.add_argument("--text_embed_dim", 
+                        help="Embedding dimension of the text encodings",
+                        default=768, 
+                        type=int,
+                        metavar="text_embed_dim")
     
+    parser.add_argument("--text_encoder",
+                        help="What huggingface model do you want to use to encode text?",
+                        default="openai/clip-vit-large-patch14",
+                        type=str)
+    
+    parser.add_argument("--pre_encoded_text", 
+                        help="Did you pre-encode all the text, so the caption in the dataset is already embeddings",
+                        action=argparse.BooleanOptionalAction)
+
 def dataset_config(parser):
 
     parser.add_argument_group("Dataset Config")
@@ -271,6 +290,27 @@ def dataset_config(parser):
                         required=True, 
                         type=str,
                         metavar="path_to_data")
+    
+    parser.add_argument("--pin_memory",
+                        help="Do you want to pin memory in the dataloader",
+                        action=argparse.BooleanOptionalAction)
+    
+    parser.add_argument("--random_resize",
+                        help="Do you want to random resize, or regular resize?",
+                        action=argparse.BooleanOptionalAction)
+    
+    parser.add_argument("--interpolation",
+                        help="Interpolation mode between ['nearest', 'bilinear' and 'bicubic']",
+                        choices=("nearest", "bilinear", "bicubic"),
+                        default="bilinear",
+                        type=str,
+                        metavar="interpolation")
+    
+    parser.add_argument("--random_flip_p",
+                        help="Random Horizontal Flip Probability",
+                        default=0.5, 
+                        metavar="random_flip")
+    
     
 def vae_training_configuration(parser):
 

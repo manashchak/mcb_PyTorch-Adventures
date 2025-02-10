@@ -76,7 +76,7 @@ class GenericImageDataset(Dataset):
         img = Image.open(img_path)
         img = self.transforms(img)
 
-        return {"images": img, "context": None, "attention_mask": None}    
+        return {"images": img}    
 
 class COCODataset(Dataset):
     def __init__(self, path_to_data, train=True, transforms=None):
@@ -209,7 +209,7 @@ def conceptual_captions(path_to_data, transforms=None):
 
     return dataset
 
-def conceptual_captions_collate_fn(img_transforms):
+def conceptual_captions_collate_fn(img_transforms, return_captions=True):
 
     def collate_fn(batch):
 
@@ -222,13 +222,16 @@ def conceptual_captions_collate_fn(img_transforms):
             attn_mask.append(torch.ones(encoded_text.shape[0]))
 
         images = torch.stack(images)
-        encoded_texts = torch.nn.utils.rnn.pad_sequence(encoded_texts, batch_first=True)
-        attn_mask = torch.nn.utils.rnn.pad_sequence(attn_mask, batch_first=True).bool()
         
-        batch = {"images": images, 
-                 "context": encoded_texts, 
-                 "attention_mask": attn_mask}
-        
+        batch = {"images": images}
+
+        if return_captions:
+            encoded_texts = torch.nn.utils.rnn.pad_sequence(encoded_texts, batch_first=True)
+            attn_mask = torch.nn.utils.rnn.pad_sequence(attn_mask, batch_first=True).bool()
+            
+            batch['context'] = encoded_text
+            batch["attention_mask"] = attn_mask
+
         return batch
 
     return collate_fn
@@ -255,6 +258,9 @@ def get_dataset(dataset,
                                      train=train)
     if dataset == "celeba":
 
+        if return_caption:
+            raise Exception("CelebA Has No Captions!")
+        
         dataset = GenericImageDataset(path_to_data=path_to_data, 
                                       transform=img_transform)
         
@@ -263,8 +269,9 @@ def get_dataset(dataset,
                             num_workers=num_workers,
                             pin_memory=pin_memory)
         
-        
     elif dataset == "imagenet": 
+        if return_caption:
+            raise Exception("Imagenet Has No Captions!")
 
         dataset = GenericImageDataset(path_to_data=path_to_data, 
                                       transform=img_transform, 
@@ -274,7 +281,7 @@ def get_dataset(dataset,
                             batch_size=batch_size,
                             num_workers=num_workers,
                             pin_memory=pin_memory)
-
+    
     elif dataset == "coco":
 
         dataset = COCODataset(path_to_data=path_to_data, 
@@ -303,3 +310,15 @@ def get_dataset(dataset,
                             pin_memory=pin_memory)
         
     return loader
+
+if __name__ == "__main__":
+
+    path_to_celeb = "/mnt/datadrive/data/CelebA/img_align_celeba/img_align_celeba/"
+    path_to_imagenet = "/mnt/datadrive/data/ImageNet/train/"
+    path_to_conceptual = "/mnt/datadrive/data/ConceptualCaptions/hf_train"
+    path_to_coco = "/mnt/datadrive/data/coco2017/"
+
+    loader = get_dataset(dataset="conceptual_caption", 
+                         batch_size=64, 
+                         num_workers=32,
+                         path_to_data=path_to_conceptual)

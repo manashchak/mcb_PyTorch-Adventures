@@ -2,8 +2,8 @@
 python stage1_vae_trainer.py \
   --experiment_name "VAETrainer" \
   --wandb_run_name "vae_training_run" \
-  --dataset "conceptual_captions" \
-  --path_to_data "/mnt/datadrive/data/ConceptualCaptions/hf_train" \
+  --dataset "celeba" \
+  --path_to_data "/mnt/datadrive/data/CelebA/img_align_celeba/img_align_celeba/" \
   --working_directory "/path/to/working_directory" \
   --img_size 256 \
   --in_channels 3 \
@@ -27,7 +27,7 @@ python stage1_vae_trainer.py \
   --disc_start 50001 \
   --disc_weight 1.0 \
   --disc_loss "hinge" \
-  --lpips_checkpoint "lpips_vgg.pt" \
+  --lpips_checkpoint "work_dir/lpips/lpips_64x64_vgg.pt" \
   --lpips_weight 0.5 \
   --learning_rate 4.5e-6 \
   --lr_warmup_steps 2000 \

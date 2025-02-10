@@ -485,7 +485,7 @@ class VQVAE(EncoderDecoder):
 
         ### Reshape to (B*H*W x E) ###
         z = z.permute(0,2,3,1)
-        z_flattened = z.reshape(-1, config.vq_embed_dim)
+        z_flattened = z.reshape(-1, self.config.vq_embed_dim)
         
         ### Compute Distance Between Each Embedding and Codevectors ###
         pairwise_dist = torch.cdist(z_flattened, self.embedding.weight)
