@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import vgg16, VGG16_Weights
+import warnings
+warnings.filterwarnings("ignore")
 
 class LPIPS(nn.Module):
     
@@ -73,7 +75,7 @@ class LPIPS(nn.Module):
 
         ### Load Checkpoint ###
         if pretrained_weights is not None:
-            print("Loading LPIPS Checkpoint:")
+            print("Loading LPIPS Checkpoint:", pretrained_weights)
             self.load_checkpoint(pretrained_weights)
 
 

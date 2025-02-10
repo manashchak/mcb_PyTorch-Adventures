@@ -4,13 +4,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from torch.optim.lr_scheduler import SequentialLR, LambdaLR
 from torchvision import transforms
 from PIL import Image
-from tqdm import tqdm
 import argparse
 
 from modules import LPIPS, DiffToLogits
+import lpips
 
 class BAPPSDataset(Dataset):
 
@@ -345,41 +344,57 @@ def eval(args):
 
     ### Set Device ###
     device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    ### Store Models to Evaluate ##
+    models_to_eval = [] 
     
     ### Load Model ###
-    lpips_model = LPIPS()
-    lpips_model.load_state_dict(torch.load(os.path.join(args.work_dir, args.checkpoint_name), weights_only=True))
-    lpips_model = lpips_model.to(device)
-    lpips_model.eval()
+    my_lpips_model = LPIPS(pretrained_weights=os.path.join(args.work_dir, args.checkpoint_name)).eval()
+    models_to_eval.append(("LPIPS Reproduction", my_lpips_model))
+
+    ### Load LPIPS Package ###
+    if args.eval_lpips_pkg:
+        pkg_lpips_model = lpips.LPIPS(pretrained=True, net="vgg", verbose=False).eval()
+        models_to_eval.append(("Original LPIPS", pkg_lpips_model))
 
     ### Loop Over Splits ###
     val_dataset_splits = ["cnn", "traditional", "color", "deblur", "frameinterp", "superres"]
-    for split in val_dataset_splits:
-        
-        ### Load Dataset ###
-        dataset = BAPPSDataset(path_to_root=args.path_to_root, 
-                               train=False, 
-                               dirs=split)
 
-        loader = DataLoader(dataset, batch_size=args.eval_batch_size, 
-                            shuffle=False, num_workers=args.num_workers)
+    ### Loop Over Models to Evaluate ###
+    for (name, model) in models_to_eval:
 
-        accs = []
-        for batch in loader:
+        print("Evaluating:", name)
+        print("-----------")
 
-            ### Grab Batch ###
-            img1, img2, ref, target = (t.to(device) for t in batch)
+        model = model.to(device)
 
-            ### Compute Diffs between Images and Refs ###
-            with torch.no_grad():
-                diff1 = lpips_model(img1, ref)
-                diff2 = lpips_model(img2, ref)
+        for split in val_dataset_splits:
+            
+            ### Load Dataset ###
+            dataset = BAPPSDataset(path_to_root=args.path_to_root, 
+                                img_size=args.img_size,
+                                train=False, 
+                                dirs=split)
 
-            accs.append(compute_accuracy(diff1, diff2, target))
+            loader = DataLoader(dataset, batch_size=args.eval_batch_size, 
+                                shuffle=False, num_workers=args.num_workers)
 
-        accs = np.mean(accs)
+            accs = []
+            for batch in loader:
 
-        print(f"Dataset: {split.upper()} -> Accuracy: {round(accs, 3)}")
+                ### Grab Batch ###
+                img1, img2, ref, target = (t.to(device) for t in batch)
+
+                ### Compute Diffs between Images and Refs ###
+                with torch.no_grad():
+                    diff1 = model(img1, ref)
+                    diff2 = model(img2, ref)
+
+                accs.append(compute_accuracy(diff1, diff2, target))
+
+            accs = np.mean(accs)
+
+            print(f"Dataset: {split.upper()} -> Accuracy: {round(accs, 3)}")
 
 
 if __name__ == "__main__":
@@ -474,7 +489,19 @@ if __name__ == "__main__":
                         required=False,
                         type=int)
     
-    args = parser.parse_args()
+    parser.add_argument("--evaluation_only", 
+                        action=argparse.BooleanOptionalAction,
+                        default=False,
+                        type=bool)
     
-    trainer(args)
+    parser.add_argument("--eval_lpips_pkg",
+                        action=argparse.BooleanOptionalAction, 
+                        default=False, 
+                        type=bool)
+    
+    args = parser.parse_args()
+
+    if not args.evaluation_only:
+        trainer(args)
+
     eval(args)

@@ -2,13 +2,15 @@ python lpips_trainer.py \
   --path_to_root "/mnt/datadrive/data/bapps/2afc" \
   --work_dir "work_dir/lpips" \
   --checkpoint_name "lpips_vgg.pt" \
-  --img_size 64 \
+  --img_size 256 \
   --batch_size 50 \
-  --num_workers 16 \
+  --num_workers 32 \
   --num_epochs 10 \
   --decay_epochs 5 \
   --logging_steps 1000 \
   --pretrained_backbone \
   --use_dropout \
   --img_range minus_one_to_one \
-  --middle_channels 32
+  --middle_channels 32 \
+  --evaluation_only \
+  --eval_lpips_pkg
