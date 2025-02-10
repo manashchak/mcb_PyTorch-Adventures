@@ -95,6 +95,8 @@ def parse_args():
                         help="Number of workers for DataLoader", 
                         default=32, 
                         type=int)
+    parser.add_argument("--pin_memory", 
+                        action=argparse.BooleanOptionalAction)
     
     ### MODEL CONFIG ###
     parser.add_argument("--encoder_embed_dim", 
@@ -226,13 +228,13 @@ trainloader = DataLoader(trainset,
                          batch_size=mini_batchsize, 
                          shuffle=True, 
                          num_workers=args.num_workers, 
-                         pin_memory=True)
+                         pin_memory=args.pin_memory)
 
 testloader = DataLoader(testset, 
                         batch_size=mini_batchsize, 
                         shuffle=True, 
                         num_workers=args.num_workers, 
-                        pin_memory=True)
+                        pin_memory=args.pin_memory)
 
 ### Compute Effective Learning Rate using Linear ###
 effective_learning_rate = args.base_learning_rate * args.per_gpu_batch_size*accelerator.num_processes / 256
@@ -373,8 +375,8 @@ for epoch in range(starting_checkpoint, args.epochs):
                         "testing_loss": epoch_test_loss, 
                         "learning_rate": scheduler.get_last_lr()[0]}, step=epoch)
     
-    ### Checkpoint Model ###
-    if epoch % args.save_checkpoint_interval == 0:
+    ### Checkpoint Model (on every checkpoint_interval or the last epoch) ###
+    if (epoch % args.save_checkpoint_interval == 0) or (epoch == args.epochs-1):
         path_to_checkpoint = os.path.join(path_to_experiment, f"checkpoint_{epoch}")
         accelerator.save_state(output_dir=path_to_checkpoint)
 
