@@ -329,6 +329,11 @@ def trainer(args):
             loss, diff1, diff2 = model(img1, img2, ref, target)
 
             accelerator.backward(loss)
+
+            ### Clip Gradients ###
+            accelerator.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+            ### Update Model ###
             optimizer.step()
             optimizer.zero_grad()
 
@@ -351,7 +356,7 @@ def trainer(args):
                 log = {"iteration": iterations, 
                        "loss": round(loss, 4), 
                        "accuracy": round(accuracy * 100, 2),
-                       "lr": round(optimizer.param_groups[0]["lr"], 4)}
+                       "lr": optimizer.param_groups[0]["lr"]}
                 
                 accelerator.print(log)
         
