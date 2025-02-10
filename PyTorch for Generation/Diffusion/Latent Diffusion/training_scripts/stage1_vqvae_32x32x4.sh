@@ -1,0 +1,42 @@
+
+python stage1_vae_trainer.py \
+  --experiment_name "VAETrainer" \
+  --wandb_run_name "vae_training_run" \
+  --dataset "conceptual_captions" \
+  --path_to_data "/mnt/datadrive/data/ConceptualCaptions/hf_train" \
+  --working_directory "/path/to/working_directory" \
+  --img_size 256 \
+  --in_channels 3 \
+  --out_channels 3 \
+  --latent_channels 4 \
+  --residual_layers_per_block 2 \
+  --attention_layers 1 \
+  --vae_channels_per_block 128 256 512 512 \
+  --vae_up_down_factor 2 \
+  --vae_up_down_kernel_size 3 \
+  --codebook_size 16384 \
+  --vq_embed_dim 4 \
+  --beta 0.25 \
+  --disc_start_dim 64 \
+  --disc_depth 3 \
+  --disc_kernel_size 4 \
+  --disc_leaky_relu_slope 0.2 \
+  --disc_learning_rate 4.5e-6 \
+  --disc_scheduler "constant" \
+  --disc_lr_warmup_steps 2000 \
+  --disc_start 50001 \
+  --disc_weight 1.0 \
+  --disc_loss "hinge" \
+  --lpips_checkpoint "lpips_vgg.pt" \
+  --lpips_weight 0.5 \
+  --learning_rate 4.5e-6 \
+  --lr_warmup_steps 2000 \
+  --total_train_iterations 100000 \
+  --checkpoint_iterations 2500 \
+  --per_gpu_batch_size 64 \
+  --gradient_accumulation_steps 1 \
+  --num_workers 8 \
+  --max_grad_norm 1.0 \
+  --beta1 0.9 \
+  --beta2 0.999 \
+  --weight_decay 0.05

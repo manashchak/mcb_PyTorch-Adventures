@@ -15,12 +15,6 @@ def experiment_config_parser(parser):
                         type=str,
                         metavar="wandb_run_name")
     
-    parser.add_argument("--path_to_data", 
-                        help="Path to ImageNet root folder which should contain \\train and \\validation folders", 
-                        required=True, 
-                        type=str,
-                        metavar="path_to_data")
-    
     parser.add_argument("--working_directory", 
                         help="Working Directory where checkpoints and logs are stored, inside a \
                         folder labeled by the experiment name", 
@@ -262,7 +256,22 @@ def training_config(parser):
                         type=float,
                         metavar="max_grad_norm")
     
+def dataset_config(parser):
 
+    parser.add_argument_group("Dataset Config")
+
+    parser.add_argument("--dataset", 
+                        help="What dataset do you want to train on? (conceptual_captions, imagenet, coco, celeba)",
+                        choices=("conceptual_captions, imagenet, coco, celeba"),
+                        type=str, 
+                        required=True)
+    
+    parser.add_argument("--path_to_data", 
+                        help="Path to where selected dataset is stored", 
+                        required=True, 
+                        type=str,
+                        metavar="path_to_data")
+    
 def vae_training_configuration(parser):
 
     parser = parser.add_argument_group("VAE Training Configurations")
@@ -310,6 +319,7 @@ def vae_trainer_cli_parser():
     parser = argparse.ArgumentParser(description="CLI Parser for AutoEncoder Training")
 
     experiment_config_parser(parser)
+    dataset_config(parser)
     vae_config(parser)
     discriminator_config(parser)
     lpips_config(parser)

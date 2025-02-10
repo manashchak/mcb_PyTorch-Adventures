@@ -1,8 +1,8 @@
 accelerate launch lpips_trainer.py \
   --path_to_root "/mnt/datadrive/data/bapps/2afc" \
   --work_dir "work_dir/lpips" \
-  --checkpoint_name "lpips_64x64_vgg.pt" \
-  --img_size 64 \
+  --checkpoint_name "lpips_256x256_vgg.pt" \
+  --img_size 256 \
   --batch_size 50 \
   --num_workers 32 \
   --num_epochs 10 \
