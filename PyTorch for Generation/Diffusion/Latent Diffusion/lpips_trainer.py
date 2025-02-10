@@ -7,6 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from PIL import Image
 import argparse
+from accelerate import Accelerator
 
 from modules import LPIPS, DiffToLogits
 import lpips
@@ -253,28 +254,47 @@ def compute_accuracy(diff1, diff2, target):
 
     """
 
-    preds = (diff2 < diff1).flatten().int().cpu()
-    target = target.flatten().cpu()
-    accuracy = torch.mean(preds * target + (1 - preds) * (1 - target)).item()
+    preds = (diff2 < diff1).flatten().int()
+    target = target.flatten()
+    accuracy = torch.mean(preds * target + (1 - preds) * (1 - target))
 
     return accuracy
 
+def set_precision(args):
+
+    dtype_dict = {"float32": torch.float32,
+                  "float16": torch.float16, 
+                  "bfloat16": torch.bfloat16}
+
+    dtype = dtype_dict["float32"]
+
+    if args.mixed_precision:
+        device_properties = torch.cuda.get_device_properties(0).major
+        
+        if device_properties >= 8:
+            print("Training with BFLOAT16")
+            dtype = dtype_dict["bfloat16"]
+        else:
+            print("Training With FLOAT16")
+            dtype = dtype_dict["float16"]
+
+    return dtype
 
 def trainer(args):
-    
+
     ### Check if Working Directory Exists ###
     if not os.path.isdir(args.work_dir):
         os.makedirs(args.work_dir, exist_ok=True)
 
     ### Prepare DataLoaders ###
     train_set = BAPPSDataset(path_to_root=args.path_to_root, train=True, img_size=args.img_size)
-    trainloader = DataLoader(train_set, batch_size=args.batch_size, num_workers=args.num_workers)
+    trainloader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
     ### Calculate Total Number of Training Steps ###
     total_training_iterations = len(trainloader) * args.num_epochs
     total_decay_iterations = len(trainloader) * args.decay_epochs
 
-    print(f"STARTING TRAINING FOR: {total_training_iterations} STEPS")
+    accelerator.print(f"STARTING TRAINING FOR: {total_training_iterations} STEPS")
 
     ### Define Model ###
     model = LPIPSForTraining(pretrained_backbone=args.pretrained_backbone, 
@@ -293,8 +313,7 @@ def trainer(args):
                             decay_iterations=total_decay_iterations)
 
     ### Set Device ###
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = model.to(device)
+    model = model.to(device=accelerator.device)
 
     ### Start Training ###
     iterations = 0
@@ -304,18 +323,17 @@ def trainer(args):
         for batch in trainloader:
             
             ### Grab Image Options 1/2, the Reference Image, and the Target ###
-            img1, img2, ref, target = (t.to(device) for t in batch)
+            img1, img2, ref, target = (t.to(accelerator.device) for t in batch)
 
-            ### Compute Loss and Store our Diffs from LPIPS ###
+            ### Compute Loss and Store our Diffs from LPIPS ###]
             loss, diff1, diff2 = model(img1, img2, ref, target)
 
-            ### Update Model ###
-            loss.backward()
+            accelerator.backward(loss)
             optimizer.step()
             optimizer.zero_grad()
 
             ### Clamp the Weights to be positive ###
-            model.clamp_weights()
+            accelerator.unwrap_model(model).clamp_weights()
 
             ### Update Scheduler ###
             scheduler.step()
@@ -327,23 +345,23 @@ def trainer(args):
 
                 accuracy = compute_accuracy(diff1, diff2, target)
                 
+                accuracy = torch.mean(accelerator.gather_for_metrics(accuracy)).item()
+                loss = torch.mean(accelerator.gather_for_metrics(loss)).item()
+
                 log = {"iteration": iterations, 
-                       "loss": round(loss.item(), 4), 
+                       "loss": round(loss, 4), 
                        "accuracy": round(accuracy * 100, 2),
                        "lr": round(optimizer.param_groups[0]["lr"], 4)}
                 
-                print(log)
+                accelerator.print(log)
         
     ### Checkpoint Model ###
-    model.checkpoint_model(path_to_checkpoint=args.work_dir, 
-                           checkpoint_name=args.checkpoint_name)
+    accelerator.unwrap_model(model).checkpoint_model(path_to_checkpoint=args.work_dir, 
+                                                     checkpoint_name=args.checkpoint_name)
     
 def eval(args):
 
-    print("EVALUATING ON VALIDATION")
-
-    ### Set Device ###
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    accelerator.print("EVALUATING ON VALIDATION")
 
     ### Store Models to Evaluate ##
     models_to_eval = [] 
@@ -362,12 +380,12 @@ def eval(args):
 
     ### Loop Over Models to Evaluate ###
     for (name, model) in models_to_eval:
+        
+        accelerator.print("-----------")
+        accelerator.print("Evaluating:", name)
+        accelerator.print("-----------")
 
-        print("Evaluating:", name)
-        print("-----------")
-
-        model = model.to(device)
-
+        model = model.to(accelerator.device)
         for split in val_dataset_splits:
             
             ### Load Dataset ###
@@ -383,14 +401,14 @@ def eval(args):
             for batch in loader:
 
                 ### Grab Batch ###
-                img1, img2, ref, target = (t.to(device) for t in batch)
+                img1, img2, ref, target = (t.to(accelerator.device) for t in batch)
 
                 ### Compute Diffs between Images and Refs ###
                 with torch.no_grad():
                     diff1 = model(img1, ref)
                     diff2 = model(img2, ref)
 
-                accs.append(compute_accuracy(diff1, diff2, target))
+                accs.append(compute_accuracy(diff1, diff2, target).item())
 
             accs = np.mean(accs)
 
@@ -418,8 +436,8 @@ if __name__ == "__main__":
                         type=str)
     
     parser.add_argument("--batch_size", 
-                        help="Batch size to train with",
-                        default=50, 
+                        help="Batch size to train with (will get multipled by n_gpus)",
+                        default=64, 
                         required=False, 
                         type=int)
     
@@ -499,9 +517,22 @@ if __name__ == "__main__":
                         default=False, 
                         type=bool)
     
+    parser.add_argument("--mixed_precision",
+                        action=argparse.BooleanOptionalAction, 
+                        default=False, 
+                        type=bool)
+    
     args = parser.parse_args()
+
+    ### Define Accelerator ###
+    accelerator = Accelerator()
 
     if not args.evaluation_only:
         trainer(args)
 
-    eval(args)
+    ### Evaluate on one GPU only ###
+    if accelerator.is_main_process:
+        eval(args)
+
+    accelerator.wait_for_everyone()
+    accelerator.end_training()
