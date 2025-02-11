@@ -68,7 +68,8 @@ def vae_config(parser):
 
     parser.add_argument("--attention_residual_connections",
                         help="Use residual connections in attention layers",
-                        action=argparse.BooleanOptionalAction)
+                        action=argparse.BooleanOptionalAction,
+                        default=True)
 
     parser.add_argument("--vae_channels_per_block",
                         help="Number of channels per block for VAE",
@@ -149,12 +150,12 @@ def discriminator_config(parser):
                         type=float,
                         metavar="disc_learning_rate")
     
-    parser.add_argument("--disc_scheduler", 
+    parser.add_argument("--disc_lr_scheduler", 
                         help="What LR Scheduler do you want for Discriminator?",
                         default="constant",
-                        choices=("constant", "linear", "cosine"),
+                        choices=("constant", "constant_with_warmup", "linear", "cosine"),
                         type=str,
-                        metavar="disc_scheduler")
+                        metavar="disc_lr_scheduler")
     
     parser.add_argument("--disc_lr_warmup_steps", 
                         help="How many warmup steps do you want in your discriminator scheduler?",
@@ -213,6 +214,13 @@ def training_config(parser):
                         default=4.5e-6,
                         type=float,
                         metavar="learning_rate")
+    
+    parser.add_argument("--lr_scheduler", 
+                        help="What LR Scheduler do you want to use?",
+                        default="constant",
+                        choices=("constant", "constant_with_warmup", "linear", "cosine"),
+                        type=str,
+                        metavar="lr_scheduler")
     
     parser.add_argument("--lr_warmup_steps",
                         help="How many steps to warmup Learning Rate", 

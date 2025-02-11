@@ -441,7 +441,7 @@ class VAE(EncoderDecoder):
 
         ### Encode and get Statistics ###
         posterior, mu, logvar = self.encode(x, return_stats=True)
-
+      
         ### Reconstruct w/ Decoder ###
         reconstruction = self.forward_dec(posterior)
 
@@ -500,13 +500,13 @@ class VQVAE(EncoderDecoder):
         if compute_loss:
             codebook_loss = torch.mean((quantized - z.detach())**2)
             commitment_loss = torch.mean((quantized.detach() - z)**2)
-            loss = codebook_loss + config.beta * commitment_loss
+            loss = codebook_loss + self.config.beta * commitment_loss
 
         ### Compute Codebook Perplexity ###
         if compute_perplexity:
 
             ### One Hot Encode Index ###
-            one_hot_closest = torch.zeros(closest.shape[0], config.codebook_size)
+            one_hot_closest = torch.zeros(closest.shape[0], self.config.codebook_size)
             one_hot_closest[list(range(closest.shape[0])), closest] = 1
             util_proportion = torch.mean(one_hot_closest, dim=0)
 
@@ -569,4 +569,4 @@ class VQVAE(EncoderDecoder):
                 "commitment_loss": commitment_loss, 
                 "loss": loss,
                 "perplexity": perplexity}
-
+    

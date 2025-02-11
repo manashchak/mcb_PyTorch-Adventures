@@ -196,9 +196,14 @@ class Attention(nn.Module):
                 ### If we want a 2D output, reshape the attention_out before adding
                 elif self.return_shape == "2D":
                     attention_out = seq2img(attention_out)
-
+                    
             attention_out = attention_out + residual
+        
+        else:
 
+            if self.return_shape == "2D":
+                attention_out = seq2img(attention_out)
+                
         return attention_out
 
 

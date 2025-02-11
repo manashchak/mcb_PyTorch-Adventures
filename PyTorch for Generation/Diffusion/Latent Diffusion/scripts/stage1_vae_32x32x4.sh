@@ -22,20 +22,21 @@ python stage1_vae_trainer.py \
   --disc_kernel_size 4 \
   --disc_leaky_relu_slope 0.2 \
   --disc_learning_rate 4.5e-6 \
-  --disc_scheduler "constant" \
-  --disc_lr_warmup_steps 2000 \
-  --disc_start 50001 \
+  --disc_lr_scheduler "constant_with_warmup" \
+  --disc_lr_warmup_steps 2500 \
+  --disc_start 50000 \
   --disc_weight 1.0 \
   --disc_loss "hinge" \
   --lpips_checkpoint "work_dir/lpips/lpips_64x64_vgg.pt" \
   --lpips_weight 0.5 \
   --learning_rate 4.5e-6 \
-  --lr_warmup_steps 2000 \
+  --lr_scheduler "cosine" \
+  --lr_warmup_steps 5000 \
   --total_train_iterations 100000 \
   --checkpoint_iterations 2500 \
-  --per_gpu_batch_size 64 \
+  --per_gpu_batch_size 4 \
   --gradient_accumulation_steps 1 \
-  --num_workers 8 \
+  --num_workers 0 \
   --max_grad_norm 1.0 \
   --beta1 0.9 \
   --beta2 0.999 \

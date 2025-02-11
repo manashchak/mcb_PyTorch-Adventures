@@ -131,7 +131,7 @@ class ResidualBlock2D(nn.Module):
     def forward(self, x, time_embed=None):
 
         residual_connection = x
-
+        
         x = self.norm1(x)
         x = F.silu(x)
         x = self.conv1(x)
