@@ -1,8 +1,172 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import lpips
+from .mylpips import LPIPS as mylpips
+from .discriminator import PatchGAN, init_weights
+
+class HingeLoss(nn.Module):
+    def __init__(self):
+        super(HingeLoss, self).__init__()
+    
+    def forward(self, real, fake):
+        loss_real = torch.mean(F.relu(1.0 - real))
+        loss_fake = torch.mean(F.relu(1.0 + fake))
+        return 0.5 * (loss_real + loss_fake)
+
+class VanillaLoss(nn.Module):
+    def __init__(self):
+        super(VanillaLoss, self).__init__()
+
+    def forward(self, real, fake):
+        return 0.5 * (torch.mean(F.softplus(-real)) +
+                      torch.mean(F.softplus(fake)))
 
 class VAELpipsDiscriminatorLoss(nn.Module):
-    pass
+    def __init__(self, 
+                 disc_start, 
+                 use_disc=True,
+                 disc_in_channels=3, 
+                 disc_start_dim=64, 
+                 disc_depth=3, 
+                 disc_kernel_size=3,
+                 disc_leaky_relu_slope=0.2,
+                 disc_loss="hinge",
+                 disc_weight=1.0,
+                 use_lpips=True, 
+                 use_lpips_package=False, 
+                 path_to_lpips_checkpoint="lpips_vgg.pt",
+                 lpips_weight=1.0,
+                 reconstruction_loss="l1",
+                 use_logvar_scaling=True, 
+                 logvar_init=0.0):
+        
+        super(VAELpipsDiscriminatorLoss, self).__init__()
+
+        self.disc_start = disc_start
+        self.disc_weight = disc_weight
+        self.lpips_weight = lpips_weight
+        self.use_disc = use_disc
+        self.use_lpips = use_lpips
+        
+        ### Load LPIPS Model ###
+        if use_lpips:
+            if use_lpips_package:
+                self.lpips_model = lpips.LPIPS(net="vgg").eval()
+            else:
+                self.lpips_model = mylpips()
+                self.lpips_model.load_checkpoint(path_to_lpips_checkpoint)
+        
+        ### Load Discriminator ###
+        if use_disc:
+            self.discriminator = PatchGAN(input_channels=disc_in_channels,
+                                          start_dim=disc_start_dim, 
+                                          depth=disc_depth, 
+                                          kernel_size=disc_kernel_size, 
+                                          leaky_relu_slope=disc_leaky_relu_slope).apply(init_weights)
+
+        ### LogVar Scaling (Im not sure where this came from but its in the implementation) ###
+        self.output_logvar = nn.Parameter(torch.ones(size=()) * logvar_init, requires_grad=use_logvar_scaling)
+
+        ### Discriminator Loss ###
+        if disc_loss == "hinge":
+            self.disc_loss = HingeLoss()
+        elif disc_loss == "vanilla":
+            self.disc_loss = VanillaLoss()
+        else:
+            raise ValueError("Select disc_loss between 'hinge' or 'vanilla'")
+        
+        ### Reconstruction Loss ###
+        if reconstruction_loss == "l1":
+            self.reconst_loss = nn.L1Loss(reduction="none")
+        elif reconstruction_loss == "l2":
+            self.reconst_loss = nn.MSELoss(reduction="none")
+        else:
+            raise ValueError("Select reconstruction_loss btwn 'l1' or 'l2'")
+
+    def forward_discriminator(self, inputs):
+        return self.discriminator(inputs)
+    
+    @torch.no_grad()
+    def forward_lpips(self, 
+                      inputs, 
+                      reconstructions):
+        
+        output = self.lpips_model(inputs, reconstructions)
+        
+        return output
+    
+    def forward_perceptual_loss(self, 
+                                images, 
+                                reconstruction):
+        
+        ### Compute Reconstruction Loss ###
+        reconstruction_loss = self.reconst_loss(images, reconstruction)
+
+        ### Compute Perceptual Loss ###
+        lpips_loss = torch.zeros(size=(), device=images.device)
+        if self.use_lpips:
+            lpips_loss = self.forward_lpips(reconstruction, images)
+
+        ### Put Together Reconstruction and Perceptual Losses ###
+        perceptual_loss = reconstruction_loss + self.lpips_weight * lpips_loss
+
+        ### Scale Perceptual Loss ###
+        perceptual_loss = perceptual_loss / torch.exp(self.output_logvar) + self.output_logvar
+
+        ### Sum Together the Loss by Pixel and Average ###
+        perceptual_loss = perceptual_loss.sum() / perceptual_loss.shape[0]
+        reconstruction_loss = reconstruction_loss.sum() / reconstruction_loss.shape[0]
+        lpips_loss = lpips_loss.sum() / lpips_loss.shape[0]
+
+        return perceptual_loss, reconstruction_loss, lpips_loss
+
+    def forward_generator_loss(self,
+                               reconstruction, 
+                               perceptual_loss,
+                               last_layer):
+        
+        ### Real -> inf, Fake -> -inf (Hinge Loss) ###
+        ### To fool our discriminator, we want to maximize the logits (towards inf) ###
+        ### We typically minimize, so we multiply by -1
+        
+        logits_fake = self.discriminator(reconstruction)
+        generator_loss = -torch.mean(logits_fake)
+
+        ### Loss Balancing Between Generator and Discriminator ###
+        adaptive_weight = self.calculate_adaptive_weights(perceptual_loss, 
+                                                          generator_loss, 
+                                                          last_layer)
+        
+        return generator_loss, adaptive_weight
+
+
+    def calculate_adaptive_weights(self, 
+                                   perceptual_loss, 
+                                   generator_loss, 
+                                   last_layer):
+        
+        perceptual_grad = torch.autograd.grad(perceptual_loss, last_layer, retain_graph=True)[0]
+        generator_grad = torch.autograd.grad(generator_loss, last_layer, retain_graph=True)[0]
+
+        adaptive_weight = torch.norm(perceptual_grad) / (torch.norm(generator_grad) + 1e-4)
+        adaptive_weight = torch.clamp(adaptive_weight, 0.0, 1e-4).detach()
+
+        return adaptive_weight
+    
+    def forward_discriminator_loss(self, images, reconstruction):
+
+        ### Pass Real/Fake images into discriminator ###
+        ### detach so no gradients to the VAE ###
+        logits_real = self.discriminator(images.detach())
+        logits_fake = self.discriminator(reconstruction.detach())
+
+        ### Compute Discriminator Loss ###
+        loss = self.disc_loss(logits_real, logits_fake)
+        
+        return loss, logits_real.mean(), logits_fake.mean()
+            
 
 class VQVAELpipsDiscriminatorLoss(nn.Module):
+
     pass

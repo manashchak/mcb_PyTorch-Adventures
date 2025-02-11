@@ -45,4 +45,10 @@ class PatchGAN(nn.Module):
 
     def forward(self, input):
         return self.model(input)
-    
+
+def init_weights(module):
+    if isinstance(module, nn.Conv2d):
+        nn.init.normal_(module.weight.data, 0.0, 0.2)
+    elif isinstance(module, nn.BatchNorm2d):
+        nn.init.normal_(module.weight.data, 1.0, 0.02)
+        nn.init.constant_(module.bias.data, 0.0)

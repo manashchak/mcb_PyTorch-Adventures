@@ -369,9 +369,6 @@ class VAE(EncoderDecoder):
             dim=[1,2,3]
         )
 
-        ### Average Across the Batch ###
-        kl_loss = kl_loss.mean()
-
         return kl_loss  
 
     def sample_z(self, mu, logvar):
@@ -450,7 +447,9 @@ class VAE(EncoderDecoder):
 
         return {"posterior": posterior, 
                 "reconstruction": reconstruction, 
-                "kl_loss": kl_loss}
+                "kl_loss": kl_loss,
+                "mu": mu, 
+                "logvar": logvar}
 
 
 class VQVAE(EncoderDecoder):

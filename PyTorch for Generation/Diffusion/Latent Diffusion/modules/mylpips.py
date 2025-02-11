@@ -78,7 +78,6 @@ class LPIPS(nn.Module):
             print("Loading LPIPS Checkpoint:", pretrained_weights)
             self.load_checkpoint(pretrained_weights)
 
-
     def forward_vgg(self, x):
 
         ### Grab Outputs from Different Stages of VGG16 ###
@@ -123,13 +122,13 @@ class LPIPS(nn.Module):
     def scale(self, x):
         return (x - self.mean) / self.std
 
-    def unit_norm(self, x):
+    def unit_norm(self, x, eps=1e-8):
 
         ### Normalize across the channel for every pixel ###
-        norm = torch.norm(x, p=2, dim=1, keepdim=True)
+        norm = torch.norm(x, p=2, dim=1, keepdim=True) + eps
 
         ### Unit Norm ##
-        x = x/norm
+        x = x / norm
 
         return x
 
@@ -147,8 +146,14 @@ class LPIPS(nn.Module):
         input, target = self.scale(input), self.scale(target)
 
         ### Grab VGG Features ###
-        input_vgg = self.forward_vgg(input)
-        target_vgg = self.forward_vgg(target)
+        if not self.train_backbone:
+            with torch.no_grad():
+                input_vgg = self.forward_vgg(input)
+                target_vgg = self.forward_vgg(target)
+        else:
+            input_vgg = self.forward_vgg(input)
+            target_vgg = self.forward_vgg(target)
+    
         
         ### Loop Through the Slices ###
         delta = {}
@@ -178,7 +183,7 @@ class LPIPS(nn.Module):
         val = 0
         for pooled in pooled_outs:
             val = val + pooled
-
+ 
         return val
 
 class DiffToLogits(nn.Module):
