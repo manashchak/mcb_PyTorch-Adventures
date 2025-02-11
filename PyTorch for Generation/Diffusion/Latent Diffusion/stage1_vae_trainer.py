@@ -3,13 +3,13 @@ from accelerate import Accelerator
 import torch
 from torch import optim
 import torch.nn.functional as F
-import lpips
 from transformers import get_scheduler
-from modules import LPIPS as mylpips
-from modules import PatchGAN, VAE, VQVAE
-from modules import LDMConfig
+from tqdm import tqdm
+
+from modules import VAE, VQVAE, LDMConfig, VAELpipsDiscriminatorLoss
 from cli_parser import vae_trainer_cli_parser
 from dataset import get_dataset
+from utils import load_val_images, save_generated_images
 
 ### Load Arguments ###
 parser = vae_trainer_cli_parser()
@@ -50,6 +50,14 @@ config = LDMConfig(img_size=args.img_size,
                    vq_embed_dim=args.vq_embed_dim, 
                    beta=args.beta)   
 
+### Get Samples for Testing Generation ###
+if args.val_img_folder_path is not None and accelerator.is_main_process:
+
+    val_images, image_files = load_val_images(args.val_img_folder_path,
+                                              img_size=args.img_size,
+                                              device=accelerator.device, 
+                                              dtype=accelerator.mixed_precision)
+    
 ### Load VAE/VQ-VAE Model ###
 if args.quantize:
     accelerator.print("Training VQ-VAE Model")
@@ -64,65 +72,83 @@ for name, param in model.named_parameters():
         total_parameters += param.numel()
 print("Number of Training Parameters:", total_parameters)
 
-### LOAD LPIPS ###
-use_lpips = not args.disable_lpips
-if use_lpips:
+### Load Loss Function ###
+loss_fn = VAELpipsDiscriminatorLoss(disc_start=args.disc_start, 
+                                    use_disc=not args.disable_discriminator,
+                                    disc_in_channels=args.in_channels, 
+                                    disc_start_dim=args.disc_start_dim,
+                                    disc_depth=args.disc_depth, 
+                                    disc_kernel_size=args.disc_kernel_size, 
+                                    disc_leaky_relu_slope=args.disc_leaky_relu_slope,
+                                    disc_loss=args.disc_loss, 
+                                    disc_weight=0, #args.disc_weight,
+                                    use_lpips=not args.disable_lpips, 
+                                    use_lpips_package=True, 
+                                    path_to_lpips_checkpoint=args.lpips_checkpoint, 
+                                    lpips_weight=args.lpips_weight, 
+                                    reconstruction_loss=args.reconstruction_loss_fn, 
+                                    use_logvar_scaling=args.scale_perceptual_by_var)
 
-    if args.use_lpips_package:
-        lpips_model = lpips.LPIPS(net="vgg").eval()
-    else:
-        lpips_model = mylpips()
-        lpips_model.load_checkpoint(args.lpips_checkpoint)
-
-### Load PatchGAN ###
-use_disc = not args.disable_discriminator
-if use_disc:
-    discriminator = PatchGAN(input_channels=args.in_channels,
-                             start_dim=args.disc_start_dim, 
-                             depth=args.disc_depth, 
-                             kernel_size=args.disc_kernel_size, 
-                             leaky_relu_slope=args.disc_leaky_relu_slope)
-
-### Load Optimizers ###
-optimizer = optim.Adam(model.parameters(), 
-                       lr=args.learning_rate,
-                       betas=(args.beta1, args.beta2), 
+### Load Optimizers (model params and output_logvar) and Schedulers ###
+params = list(model.parameters()) + [loss_fn.output_logvar]
+optimizer = optim.Adam(params, 
+                       lr=args.learning_rate, 
+                       betas=(args.beta1, args.beta2),
                        weight_decay=args.weight_decay)
 
-if use_disc:
-    disc_optimizer = optim.Adam(discriminator.parameters(), 
-                                lr=args.disc_learning_rate, 
-                                betas=(args.beta1, args.beta2),
-                                weight_decay=args.weight_decay)
-    
-### Load Schedulers ###
 scheduler = get_scheduler(name=args.lr_scheduler,
                           optimizer=optimizer, 
                           num_training_steps=args.total_train_iterations * accelerator.num_processes, 
                           num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes)
 
-if use_disc:
-    num_disc_steps = args.total_train_iterations - args.disc_start
+if not args.disable_discriminator:
+    use_disc = not args.disable_discriminator
+    disc_optimizer = optim.Adam(loss_fn.discriminator.parameters(), 
+                                lr=args.learning_rate, 
+                                betas=(args.beta1, args.beta2),
+                                weight_decay=args.weight_decay)
+
     disc_scheduler = get_scheduler(name=args.disc_lr_scheduler,
-                                   optimizer=disc_optimizer, 
-                                   num_training_steps=num_disc_steps * accelerator.num_processes, 
-                                   num_warmup_steps=args.disc_lr_warmup_steps * accelerator.num_processes)
-    
+                                optimizer=disc_optimizer, 
+                                num_training_steps=args.total_train_iterations * accelerator.num_processes, 
+                                num_warmup_steps=args.disc_lr_warmup_steps * accelerator.num_processes)
+
+
 ### Prepare Everything ###
-model, lpips_model, discriminator, optimizer, disc_optimizer, scheduler, disc_scheduler, dataloader = accelerator.prepare(
-    model, lpips_model, discriminator, optimizer, disc_optimizer, scheduler, disc_optimizer, dataloader
+model, loss_fn, optimizer, disc_optimizer, scheduler, disc_scheduler, dataloader = accelerator.prepare(
+    model, loss_fn, optimizer, disc_optimizer, scheduler, disc_scheduler, dataloader
 )
+accelerator.register_for_checkpointing(disc_scheduler, scheduler)
+
+### Initialize Variables to Accumulate ###
+vae_log = {"loss": 0,
+           "perceptual_loss": 0,
+           "reconstruction_loss": 0, 
+           "lpips_loss": 0,
+           "kl_loss": 0,
+           "generator_loss": 0}
+
+disc_log = {"disc_loss": 0, 
+            "logits_real": 0,
+            "logits_fake": 0}
+
+### Quick Helper to Rest Logs ###
+def reset_log(log):
+    return {key: 0 for (key, _) in log.items()}
 
 ### Start Training ###
 global_step = 0
 train = True
+print_disc_start = True
+
+progress_bar = tqdm(range(args.total_train_iterations), disable=not accelerator.is_local_main_process)
 
 while train:
 
     ### Set Everything to Training Mode ###
     model.train()
     if use_disc:
-        discriminator.train()
+        accelerator.unwrap_model(loss_fn).discriminator.train()
 
     for batch in dataloader:
 
@@ -134,33 +160,166 @@ while train:
         posterior = model_output["posterior"]
         reconstruction = model_output["reconstruction"]
         kl_loss = model_output["kl_loss"]
+        
+        
+        ### Toggles for Updating Discriminator vs Generator ###
+        gd_toggle = (global_step % 2 == 0)
+        train_disc = (global_step >= args.disc_start)
 
-        ### Train only VAE until disc_start, and then alternate vae and patchgan updates ###
-        if (global_step % 2 == 0) or (global_step < args.disc_start):
+        if train_disc and print_disc_start:
+            print_disc_start = False
+            accelerator.print("STARTING GAN TRAINING")
 
+        ### If train_disc is false then we will enter this condition and train only the VAE ###
+        ### If trian disc is true, then we will enter this condition only on even steps ##
+        ### on odd steps we will update the discriminator ###
+        if gd_toggle or not train_disc: 
+            
             with accelerator.accumulate(model):
                 
-                ### Calculate Reconstruction Loss ###
-                reconst_loss = F.mse_loss(reconstruction, images, reduction="none")
-                reconst_loss = reconst_loss.sum() / reconst_loss.shape[0]
+                ### Compute Perceptual Loss (Reconstruction + LPIPS) ###
+                perceptual_loss, reconstruction_loss, lpips_loss = \
+                    accelerator.unwrap_model(loss_fn).forward_perceptual_loss(images, reconstruction)
 
-                ### Comute Perceptual Loss ###
-                with torch.no_grad():
-                    lpips_loss = lpips_model(reconstruction, images).squeeze()
-                
-                ### Average the KL Loss Across Batch ###
+                ### Average KL Loss ###
                 kl_loss = kl_loss.mean()
 
-                print(kl_loss)
+                ### Compute Generator Loss (for GAN Task) if train_disc is True ###
+                generator_loss = torch.zeros(size=(), device=images.device)
+                adaptive_weight = torch.zeros(size=(), device=images.device)
 
-    
+                ### Check, if train_disc is now True, and an Even Step (previous condition) ###
+                if train_disc: 
+                    
+                    last_layer = accelerator.unwrap_model(model).decoder.conv_out.weight
+                    generator_loss, adaptive_weight = \
+                        accelerator.unwrap_model(loss_fn).forward_generator_loss(reconstruction, 
+                                                                                 perceptual_loss,
+                                                                                 last_layer)
+            
+                ### Compute Total Weighted Loss ###
+                loss = perceptual_loss + args.kl_weight * kl_loss + args.disc_weight * adaptive_weight * generator_loss
+
+                ### Update Model ###
+                accelerator.backward(loss)
+
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                
+                optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad(set_to_none=True)
+
+                ### Create Log of Everything ###
+                log = {"loss": loss,
+                       "perceptual_loss": perceptual_loss,
+                       "reconstruction_loss": reconstruction_loss, 
+                       "lpips_loss": lpips_loss,
+                       "kl_loss": kl_loss,
+                       "generator_loss": generator_loss}
+                
+                ### Accumulate Log ###
+                for key, value in log.items():
+                    vae_log[key] += value.mean() / args.gradient_accumulation_steps
+
+        ### On Odd Steps (when train_disc is True) we will update the discriminator ###
         else:
-            continue
-        
-        global_step += 1
+
+            discriminator = accelerator.unwrap_model(loss_fn).discriminator
+            
+            with accelerator.accumulate(discriminator):
+
+                loss, logits_real, logits_fake = \
+                    accelerator.unwrap_model(loss_fn).forward_discriminator_loss(images, reconstruction)
+                
+                accelerator.backward(loss)
+
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(discriminator.parameters(), args.max_grad_norm)
+
+                disc_optimizer.step()
+                disc_scheduler.step()
+                disc_optimizer.zero_grad(set_to_none=True)
+
+                log = {"disc_loss": loss, 
+                       "logits_real": logits_real,
+                       "logits_fake": logits_fake}
+                
+                ### Accumulate Log ###
+                for key, value in log.items():
+                    disc_log[key] += value.mean() / args.gradient_accumulation_steps
+                
+        ### Every Gradient Sync Marks the End of a Full Accumulation Step ###
+        if accelerator.sync_gradients:
+            
+            ### If we updated the VAE ###
+            if gd_toggle or not train_disc:
+
+                ## Gather Across GPUs ###
+                vae_log = {key: accelerator.gather_for_metrics(value).mean().item() for key, value in vae_log.items()}
+                vae_log["lr"] = scheduler.get_last_lr()[0]
+
+                logging_string = "GEN: "
+                for k, v in vae_log.items():
+                    logging_string += f"|{k[6:] if 'train_' in k else k}: {round(v.item() if torch.is_tensor(v) else v, 6)}"
+
+                ### Print to Console ###
+                accelerator.print(logging_string)
+
+                ### Push to WandB ###
+                if args.log_wandb:
+                    accelerator.log(vae_log, step=global_step)
+
+                ### Reset Log for Next Accumulation ###
+                vae_log = reset_log(vae_log)
+                vae_log.pop("lr")
+
+            ### If we updated the Discriminator ###
+            else:
+
+                ## Gather Across GPUs ###
+                disc_log = {key: accelerator.gather_for_metrics(value).mean().item() for key, value in disc_log.items()}
+                disc_log["disc_lr"] = disc_scheduler.get_last_lr()[0]
+
+                logging_string = "DIS: "
+                for k, v in disc_log.items():
+                    logging_string += f"|{k[6:] if 'train_' in k else k}: {round(v.item() if torch.is_tensor(v) else v, 6)}"
+
+
+                ### Push to WandB ###
+                if args.log_wandb:
+                    accelerator.log(disc_log, step=global_step)
+
+                ### Reset Log for Next Accumulation ###
+                disc_log = reset_log(disc_log)
+                disc_log.pop("disc_lr")
+                
+            global_step += 1
+            progress_bar.update(1)
+
+        if global_step % args.val_generation_freq == 0:
+            
+            accelerator.print("GENERATING SAMPLES")
+
+            if args.val_img_folder_path is not None and accelerator.is_main_process:
+
+                model.eval()
+
+                with torch.no_grad():
+                    reconstructions = model(images)["reconstruction"]
+
+                save_generated_images(reconstruction.detach(),
+                                      args.val_image_gen_save_path,
+                                      global_step,
+                                      image_files)
+            
+            accelerator.wait_for_everyone()
+
+        if (global_step % args.checkpoint_iterations == 0) or (global_step == args.total_train_iterations-1):
+            path_to_checkpoint = os.path.join(path_to_experiment, f"checkpoint_{global_step}")
+            accelerator.save_state(output_dir=path_to_checkpoint)
 
         if global_step >= args.total_train_iterations:
             train = False
+            accelerator.print("COMPLETED TRAINING!!")
             break
-            
-

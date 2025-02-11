@@ -111,9 +111,9 @@ class VAELpipsDiscriminatorLoss(nn.Module):
         ### Put Together Reconstruction and Perceptual Losses ###
         perceptual_loss = reconstruction_loss + self.lpips_weight * lpips_loss
 
-        ### Scale Perceptual Loss ###
+        ## Scale Perceptual Loss ###
         perceptual_loss = perceptual_loss / torch.exp(self.output_logvar) + self.output_logvar
-
+        
         ### Sum Together the Loss by Pixel and Average ###
         perceptual_loss = perceptual_loss.sum() / perceptual_loss.shape[0]
         reconstruction_loss = reconstruction_loss.sum() / reconstruction_loss.shape[0]

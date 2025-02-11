@@ -24,7 +24,8 @@ def experiment_config_parser(parser):
 
     parser.add_argument("--log_wandb",
                         action=argparse.BooleanOptionalAction, 
-                        help="Do you want to log to WandB?")
+                        help="Do you want to log to WandB?",
+                        default=False)
     
 def vae_config(parser):
 
@@ -92,7 +93,8 @@ def vae_config(parser):
 
     parser.add_argument("--quantize",
                         action=argparse.BooleanOptionalAction,
-                        help="Enable quantization for VAE")
+                        help="Enable quantization for VAE",
+                        default=False)
 
     parser.add_argument("--codebook_size",
                         help="Number of embeddings in the codebook for vector quantization",
@@ -118,7 +120,8 @@ def discriminator_config(parser):
 
     parser.add_argument('--disable_discriminator',
                         help="Flag to turn off GAN Loss",
-                        action=argparse.BooleanOptionalAction)
+                        action=argparse.BooleanOptionalAction,
+                        default=False)
 
     parser.add_argument("--disc_start_dim",
                         help="Starting channels projection for PatchGAN",
@@ -178,6 +181,7 @@ def discriminator_config(parser):
     parser.add_argument("--disc_loss", 
                         help="What loss function for the discriminator?",
                         default="hinge",
+                        choices=("hinge", "vanilla"),
                         type=str,
                         metavar="disc_loss")
     
@@ -187,11 +191,13 @@ def lpips_config(parser):
 
     parser.add_argument('--disable_lpips',
                         help="Flag to turn off LPIPS Loss",
-                        action=argparse.BooleanOptionalAction)
+                        action=argparse.BooleanOptionalAction,
+                        default=False)
 
     parser.add_argument("--use_lpips_package", 
                         help="Flag to use the original LPIPS package, otherwise own implementation",
-                        action=argparse.BooleanOptionalAction)
+                        action=argparse.BooleanOptionalAction,
+                        default=False)
     
     parser.add_argument("--lpips_checkpoint",
                         help="Checkpoint to our own LPIPS implementation",
@@ -281,7 +287,8 @@ def text_captioning_config(parser):
     
     parser.add_argument("--pre_encoded_text", 
                         help="Did you pre-encode all the text, so the caption in the dataset is already embeddings",
-                        action=argparse.BooleanOptionalAction)
+                        action=argparse.BooleanOptionalAction,
+                        default=False)
 
 def dataset_config(parser):
 
@@ -301,11 +308,13 @@ def dataset_config(parser):
     
     parser.add_argument("--pin_memory",
                         help="Do you want to pin memory in the dataloader",
-                        action=argparse.BooleanOptionalAction)
+                        action=argparse.BooleanOptionalAction,
+                        default=False)
     
     parser.add_argument("--random_resize",
                         help="Do you want to random resize, or regular resize?",
-                        action=argparse.BooleanOptionalAction)
+                        action=argparse.BooleanOptionalAction,
+                        default=False)
     
     parser.add_argument("--interpolation",
                         help="Interpolation mode between ['nearest', 'bilinear' and 'bicubic']",
@@ -326,15 +335,45 @@ def vae_training_configuration(parser):
 
     parser.add_argument("--train_decoder_only",
                         help="Do you only want to train the decoder (good for finetuning)",
-                        action=argparse.BooleanOptionalAction)
+                        action=argparse.BooleanOptionalAction,
+                        default=False)
     
     parser.add_argument("--reconstruction_loss_fn",
                         help="What reconstruction loss do you want to use? (l1, l2, huber)",
-                        choices=("l1", "l2", "huber"),
+                        choices=("l1", "l2"),
                         default="l1",
                         type=str, 
                         metavar="reconstruction_loss_fn")
     
+    parser.add_argument("--scale_perceptual_by_var",
+                        help="Toggle to scale perceptual loss by the predicted log variance",
+                        action=argparse.BooleanOptionalAction,
+                        default=False)
+    
+    parser.add_argument("--kl_weight",
+                        help="What is the weight of the KL Loss term",
+                        default=1e-6,
+                        type=float, 
+                        metavar="kl_weight")
+    
+    parser.add_argument("--val_img_folder_path", 
+                        help="Folder with images you want to evaluate",
+                        default=None,
+                        type=str, 
+                        metavar="val_img_folder_path")
+    
+    parser.add_argument("--val_image_gen_save_path", 
+                        help="Where do you want to save your generated outputs?",
+                        default=None,
+                        type=str, 
+                        metavar="val_image_gen_save_path")
+    
+    parser.add_argument("--val_generation_freq",
+                        help="After how many iterations do you want to generate some images",
+                        default=500, 
+                        type=int, 
+                        metavar="val_generation_freq")
+
 def optimizer_config(parser):
     
     parser = parser.add_argument_group("Optimizer Configurations")
@@ -353,20 +392,9 @@ def optimizer_config(parser):
     
     parser.add_argument("--weight_decay", 
                         help="Weight decay for optimizer", 
-                        default=0.05, 
+                        default=0.01, 
                         type=float,
                         metavar="weight_decay")
-    
-    parser.add_argument("--bias_weight_decay",
-                        help="Apply weight decay to bias",
-                        default=False, 
-                        action=argparse.BooleanOptionalAction)
-    
-    parser.add_argument("--norm_weight_decay",
-                        help="Apply weight decay to normalization weight and bias",
-                        default=False, 
-                        action=argparse.BooleanOptionalAction)
-    
     
 
 def vae_trainer_cli_parser():
