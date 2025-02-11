@@ -290,12 +290,6 @@ def trainer(args):
     train_set = BAPPSDataset(path_to_root=args.path_to_root, train=True, img_size=args.img_size)
     trainloader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
-    ### Calculate Total Number of Training Steps ###
-    total_training_iterations = len(trainloader) * args.num_epochs
-    total_decay_iterations = len(trainloader) * args.decay_epochs
-
-    accelerator.print(f"STARTING TRAINING FOR: {total_training_iterations} STEPS")
-
     ### Define Model ###
     model = LPIPSForTraining(pretrained_backbone=args.pretrained_backbone, 
                              train_backbone=args.train_backbone, 
@@ -305,15 +299,20 @@ def trainer(args):
     
     ### Define Optimizer ###
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, betas=(0.5, 0.999))
-    
+
     ### Define LR Scheduler Decay ###
     scheduler = LRScheduler(optimizer=optimizer, 
                             initial_lr=args.initial_lr,
-                            total_iterations=total_training_iterations,
-                            decay_iterations=total_decay_iterations)
+                            total_iterations=len(trainloader) * args.num_epochs,
+                            decay_iterations=len(trainloader) * args.decay_epochs)
 
-    ### Set Device ###
-    model = model.to(device=accelerator.device)
+    ### Prepare Everything ###
+    model, optimizer, trainloader, scheduler = accelerator.prepare(
+        model, optimizer, trainloader, scheduler
+    )
+    
+    total_training_iterations = len(trainloader) * args.num_epochs
+    accelerator.print("TRAINING FOR {} ITERATIONS".format(total_training_iterations))
 
     ### Start Training ###
     iterations = 0

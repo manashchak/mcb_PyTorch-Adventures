@@ -3,7 +3,7 @@ accelerate launch lpips_trainer.py \
   --work_dir "work_dir/lpips" \
   --checkpoint_name "lpips_64x64_vgg.pt" \
   --img_size 64 \
-  --batch_size 50 \
+  --batch_size 25 \
   --num_workers 32 \
   --num_epochs 10 \
   --decay_epochs 5 \

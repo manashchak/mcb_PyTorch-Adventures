@@ -142,12 +142,17 @@ while train:
                 
                 ### Calculate Reconstruction Loss ###
                 reconst_loss = F.mse_loss(reconstruction, images, reduction="none")
+                reconst_loss = reconst_loss.sum() / reconst_loss.shape[0]
 
                 ### Comute Perceptual Loss ###
                 with torch.no_grad():
-                    lpips_loss = lpips_model(reconstruction, images)
+                    lpips_loss = lpips_model(reconstruction, images).squeeze()
                 
-                print(lpips_loss)
+                ### Average the KL Loss Across Batch ###
+                kl_loss = kl_loss.mean()
+
+                print(kl_loss)
+
     
         else:
             continue

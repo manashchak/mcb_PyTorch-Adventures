@@ -328,6 +328,13 @@ def vae_training_configuration(parser):
                         help="Do you only want to train the decoder (good for finetuning)",
                         action=argparse.BooleanOptionalAction)
     
+    parser.add_argument("--reconstruction_loss_fn",
+                        help="What reconstruction loss do you want to use? (l1, l2, huber)",
+                        choices=("l1", "l2", "huber"),
+                        default="l1",
+                        type=str, 
+                        metavar="reconstruction_loss_fn")
+    
 def optimizer_config(parser):
     
     parser = parser.add_argument_group("Optimizer Configurations")
