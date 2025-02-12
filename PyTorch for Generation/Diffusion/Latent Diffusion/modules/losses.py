@@ -22,7 +22,7 @@ class VanillaLoss(nn.Module):
         return 0.5 * (torch.mean(F.softplus(-real)) +
                       torch.mean(F.softplus(fake)))
 
-class VAELpipsDiscriminatorLoss(nn.Module):
+class LpipsDiscriminatorLoss(nn.Module):
     def __init__(self, 
                  disc_start, 
                  use_disc=True,
@@ -41,7 +41,7 @@ class VAELpipsDiscriminatorLoss(nn.Module):
                  use_logvar_scaling=True, 
                  logvar_init=0.0):
         
-        super(VAELpipsDiscriminatorLoss, self).__init__()
+        super(LpipsDiscriminatorLoss, self).__init__()
 
         self.disc_start = disc_start
         self.disc_weight = disc_weight
@@ -98,7 +98,8 @@ class VAELpipsDiscriminatorLoss(nn.Module):
     
     def forward_perceptual_loss(self, 
                                 images, 
-                                reconstruction):
+                                reconstruction,
+                                img_average=True):
         
         ### Compute Reconstruction Loss ###
         reconstruction_loss = self.reconst_loss(images, reconstruction)
@@ -115,9 +116,16 @@ class VAELpipsDiscriminatorLoss(nn.Module):
         perceptual_loss = perceptual_loss / torch.exp(self.output_logvar) + self.output_logvar
         
         ### Sum Together the Loss by Pixel and Average ###
-        perceptual_loss = perceptual_loss.sum() / perceptual_loss.shape[0]
-        reconstruction_loss = reconstruction_loss.sum() / reconstruction_loss.shape[0]
-        lpips_loss = lpips_loss.sum() / lpips_loss.shape[0]
+        if img_average:
+            perceptual_loss = perceptual_loss.sum() / perceptual_loss.shape[0]
+            reconstruction_loss = reconstruction_loss.sum() / reconstruction_loss.shape[0]
+            lpips_loss = lpips_loss.sum() / lpips_loss.shape[0]
+
+        ### Or avereage all the Pixel Errors Together ###
+        else:
+            perceptual_loss = perceptual_loss.mean()
+            reconstruction = reconstruction.mean()
+            lpips_loss = lpips_loss.mean()
 
         return perceptual_loss, reconstruction_loss, lpips_loss
 
@@ -165,8 +173,3 @@ class VAELpipsDiscriminatorLoss(nn.Module):
         loss = self.disc_loss(logits_real, logits_fake)
         
         return loss, logits_real.mean(), logits_fake.mean()
-            
-
-class VQVAELpipsDiscriminatorLoss(nn.Module):
-
-    pass

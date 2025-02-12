@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from transformers import get_scheduler
 from tqdm import tqdm
 
-from modules import VAE, VQVAE, LDMConfig, VAELpipsDiscriminatorLoss
+from modules import VAE, VQVAE, LDMConfig, LpipsDiscriminatorLoss
 from cli_parser import vae_trainer_cli_parser
 from dataset import get_dataset
 from utils import load_val_images, save_generated_images
@@ -48,10 +48,11 @@ config = LDMConfig(img_size=args.img_size,
                    attention_residual_connections=args.attention_residual_connections, 
                    vae_channels_per_block=args.vae_channels_per_block,
                    vae_up_down_factor=args.vae_up_down_factor, 
-                   vae_up_down_kernel_size=args.vae_up_down_kernel_size, 
+                   vae_up_down_kernel_size=args.vae_up_down_kernel_size,
+                   quantize=args.quantize, 
                    codebook_size=args.codebook_size, 
                    vq_embed_dim=args.vq_embed_dim, 
-                   beta=args.beta)   
+                   commitment_beta=args.commitment_beta)   
 
 ### Get Samples for Testing Generation ###
 if args.val_img_folder_path is not None and accelerator.is_main_process:
@@ -76,21 +77,21 @@ for name, param in model.named_parameters():
 print("Number of Training Parameters:", total_parameters)
 
 ### Load Loss Function ###
-loss_fn = VAELpipsDiscriminatorLoss(disc_start=args.disc_start, 
-                                    use_disc=not args.disable_discriminator,
-                                    disc_in_channels=args.in_channels, 
-                                    disc_start_dim=args.disc_start_dim,
-                                    disc_depth=args.disc_depth, 
-                                    disc_kernel_size=args.disc_kernel_size, 
-                                    disc_leaky_relu_slope=args.disc_leaky_relu_slope,
-                                    disc_loss=args.disc_loss, 
-                                    disc_weight=0, #args.disc_weight,
-                                    use_lpips=not args.disable_lpips, 
-                                    use_lpips_package=True, 
-                                    path_to_lpips_checkpoint=args.lpips_checkpoint, 
-                                    lpips_weight=args.lpips_weight, 
-                                    reconstruction_loss=args.reconstruction_loss_fn, 
-                                    use_logvar_scaling=args.scale_perceptual_by_var)
+loss_fn = LpipsDiscriminatorLoss(disc_start=args.disc_start, 
+                                 use_disc=not args.disable_discriminator,
+                                 disc_in_channels=args.in_channels, 
+                                 disc_start_dim=args.disc_start_dim,
+                                 disc_depth=args.disc_depth, 
+                                 disc_kernel_size=args.disc_kernel_size, 
+                                 disc_leaky_relu_slope=args.disc_leaky_relu_slope,
+                                 disc_loss=args.disc_loss, 
+                                 disc_weight=0, #args.disc_weight,
+                                 use_lpips=not args.disable_lpips, 
+                                 use_lpips_package=True, 
+                                 path_to_lpips_checkpoint=args.lpips_checkpoint, 
+                                 lpips_weight=args.lpips_weight, 
+                                 reconstruction_loss=args.reconstruction_loss_fn, 
+                                 use_logvar_scaling=args.scale_perceptual_by_var)
 
 ### Load Optimizers (model params and output_logvar) and Schedulers ###
 params = list(model.parameters()) + [loss_fn.output_logvar]
@@ -124,12 +125,26 @@ model, loss_fn, optimizer, disc_optimizer, scheduler, disc_scheduler, dataloader
 accelerator.register_for_checkpointing(disc_scheduler, scheduler)
 
 ### Initialize Variables to Accumulate ###
-vae_log = {"loss": 0,
-           "perceptual_loss": 0,
-           "reconstruction_loss": 0, 
-           "lpips_loss": 0,
-           "kl_loss": 0,
-           "generator_loss": 0}
+if not args.quantize:
+    model_log = {"loss": 0,
+                "perceptual_loss": 0,
+                "reconstruction_loss": 0, 
+                "lpips_loss": 0,
+                "kl_loss": 0,
+                "generator_loss": 0}
+else:
+
+    model_log = {"loss": 0,
+                "perceptual_loss": 0,
+                "reconstruction_loss": 0, 
+                "lpips_loss": 0,
+                "codebook_loss": 0,
+                "commitment_loss": 0,
+                "quantization_loss": 0, 
+                "perplexity": 0,
+                "generator_loss": 0}
+
+    
 
 disc_log = {"disc_loss": 0, 
             "logits_real": 0,
@@ -139,12 +154,21 @@ disc_log = {"disc_loss": 0,
 def reset_log(log):
     return {key: 0 for (key, _) in log.items()}
 
-### Start Training ###
-global_step = 0
-train = True
-print_disc_start = True
+### Check if we are resuming from checkpoint ###
+if args.resume_from_checkpoint is not None:
+    accelerator.print(f"Resuming from Checkpoint: {args.resume_from_checkpoint}")
+    path_to_checkpoint = os.path.join(path_to_experiment, args.resume_from_checkpoint)
+    accelerator.load_state(path_to_checkpoint)
+    global_step = int(args.resume_from_checkpoint.split("_")[-1])
+    print_disc_start = False
+else:
+    global_step = 0
+    print_disc_start = True
 
-progress_bar = tqdm(range(args.total_train_iterations), disable=not accelerator.is_local_main_process)
+### Start Training ###
+train = True
+
+progress_bar = tqdm(range(args.total_train_iterations), initial=global_step, disable=not accelerator.is_local_main_process)
 
 while train:
 
@@ -159,11 +183,17 @@ while train:
         images = batch["images"]
         model_output = model(images)
 
-        ### Parse VAE Output ###
-        posterior = model_output["posterior"]
+        ### Parse Outputs ###
         reconstruction = model_output["reconstruction"]
-        kl_loss = model_output["kl_loss"]
-        
+
+        ### Parse Architecture Specific Outputs ###
+        if not args.quantize:
+            kl_loss = model_output["kl_loss"]
+        else:
+            quantization_loss  = model_output["quantization_loss"]
+            codebook_loss  = model_output["codebook_loss"]
+            commitment_loss  = model_output["commitment_loss"]
+            perplexity = model_output["perplexity"]
         
         ### Toggles for Updating Discriminator vs Generator ###
         gd_toggle = (global_step % 2 == 0)
@@ -182,10 +212,9 @@ while train:
                 
                 ### Compute Perceptual Loss (Reconstruction + LPIPS) ###
                 perceptual_loss, reconstruction_loss, lpips_loss = \
-                    accelerator.unwrap_model(loss_fn).forward_perceptual_loss(images, reconstruction)
-
-                ### Average KL Loss ###
-                kl_loss = kl_loss.mean()
+                    accelerator.unwrap_model(loss_fn).forward_perceptual_loss(images, 
+                                                                              reconstruction,
+                                                                              img_average=not args.pixelwise_average)
 
                 ### Compute Generator Loss (for GAN Task) if train_disc is True ###
                 generator_loss = torch.zeros(size=(), device=images.device)
@@ -201,7 +230,12 @@ while train:
                                                                                  last_layer)
             
                 ### Compute Total Weighted Loss ###
-                loss = perceptual_loss + args.kl_weight * kl_loss + args.disc_weight * adaptive_weight * generator_loss
+                if not args.quantize:
+                    model_specific_loss = args.kl_weight * kl_loss.mean()
+                else:
+                    model_specific_loss = args.codebook_weight * quantization_loss
+
+                loss = perceptual_loss + model_specific_loss + args.disc_weight * adaptive_weight * generator_loss
 
                 ### Update Model ###
                 accelerator.backward(loss)
@@ -214,16 +248,30 @@ while train:
                 optimizer.zero_grad(set_to_none=True)
 
                 ### Create Log of Everything ###
-                log = {"loss": loss,
-                       "perceptual_loss": perceptual_loss,
-                       "reconstruction_loss": reconstruction_loss, 
-                       "lpips_loss": lpips_loss,
-                       "kl_loss": kl_loss,
-                       "generator_loss": generator_loss}
-                
+
+                if not args.quantize:
+                    log = {"loss": loss,
+                           "perceptual_loss": perceptual_loss,
+                           "reconstruction_loss": reconstruction_loss, 
+                           "lpips_loss": lpips_loss,
+                           "kl_loss": kl_loss,
+                           "generator_loss": generator_loss}
+                    
+                else:
+
+                    log = {"loss": loss,
+                           "perceptual_loss": perceptual_loss,
+                           "reconstruction_loss": reconstruction_loss, 
+                           "lpips_loss": lpips_loss,
+                           "quantization_loss": quantization_loss,
+                           "codebook_loss": codebook_loss, 
+                           "commitment_loss": commitment_loss,
+                           "perplexity": perplexity,
+                           "generator_loss": generator_loss}
+
                 ### Accumulate Log ###
                 for key, value in log.items():
-                    vae_log[key] += value.mean() / args.gradient_accumulation_steps
+                    model_log[key] += value.mean() / args.gradient_accumulation_steps
 
         ### On Odd Steps (when train_disc is True) we will update the discriminator ###
         else:
@@ -259,16 +307,16 @@ while train:
             if gd_toggle or not train_disc:
 
                 ## Gather Across GPUs ###
-                vae_log = {key: accelerator.gather_for_metrics(value).mean().item() for key, value in vae_log.items()}
-                vae_log["lr"] = scheduler.get_last_lr()[0]
+                model_log = {key: accelerator.gather_for_metrics(value).mean().item() for key, value in model_log.items()}
+                model_log["lr"] = scheduler.get_last_lr()[0]
 
                 logging_string = "GEN: "
-                for k, v in vae_log.items():
+                for k, v in model_log.items():
                     v = v.item() if torch.is_tensor(v) else v
                     if "lr" in k:
                         v = f"{v:.1e}"
                     else:
-                        v = round(v, 4)
+                        v = round(v, 2)
                     logging_string += f"|{k}: {v}"
 
                 ### Print to Console ###
@@ -276,11 +324,11 @@ while train:
 
                 ### Push to WandB ###
                 if args.log_wandb:
-                    accelerator.log(vae_log, step=global_step)
+                    accelerator.log(model_log, step=global_step)
 
                 ### Reset Log for Next Accumulation ###
-                vae_log = reset_log(vae_log)
-                vae_log.pop("lr")
+                model_log = reset_log(model_log)
+                model_log.pop("lr")
 
             ### If we updated the Discriminator ###
             else:
@@ -295,7 +343,7 @@ while train:
                     if "lr" in k:
                         v = f"{v:.1e}"
                     else:
-                        v = round(v, 4)
+                        v = round(v, 2)
                     logging_string += f"|{k}: {v}"
 
                 ### Print to Console ###

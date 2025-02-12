@@ -272,6 +272,20 @@ def get_dataset(dataset,
                             pin_memory=pin_memory,
                             shuffle=True)
         
+    if dataset == "celebahq":
+
+        if return_caption:
+            raise Exception("CelebAHQ Has No Captions!")
+        
+        dataset = GenericImageDataset(path_to_data=path_to_data, 
+                                      transform=img_transform)
+        
+        loader = DataLoader(dataset, 
+                            batch_size=batch_size,
+                            num_workers=num_workers,
+                            pin_memory=pin_memory,
+                            shuffle=True)
+        
     elif dataset == "imagenet": 
         if return_caption:
             raise Exception("Imagenet Has No Captions!")
@@ -320,6 +334,7 @@ def get_dataset(dataset,
 if __name__ == "__main__":
 
     path_to_celeb = "/mnt/datadrive/data/CelebA/img_align_celeba/img_align_celeba/"
+    path_to_celebhq = "/mnt/datadrive/data/CelebAMask-HQ/CelebA-HQ-img/"
     path_to_imagenet = "/mnt/datadrive/data/ImageNet/train/"
     path_to_conceptual = "/mnt/datadrive/data/ConceptualCaptions/hf_train"
     path_to_coco = "/mnt/datadrive/data/coco2017/"

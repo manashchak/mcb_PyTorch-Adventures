@@ -28,11 +28,10 @@ class LDMConfig:
     quantize: bool = False
     codebook_size: int = 16384
     vq_embed_dim: float = 4
-    beta: float = 0.25
+    commitment_beta: float = 0.25
 
     ### VAE Scaling ###
     vae_scale_factor: float = None
-    
 
     ###################
     ### UNET CONFIG ###

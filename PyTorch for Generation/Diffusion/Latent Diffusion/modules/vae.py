@@ -174,6 +174,7 @@ class VAEEncoder(nn.Module):
                                      eps=1e-6)
         
         conv_out_channels = 2 * self.latent_channels if double_z else self.latent_channels
+   
         self.conv_out = nn.Conv2d(self.channels_per_block[-1],
                                   conv_out_channels, # We want 4 latent channels (so 4 for mean and 4 for std)
                                   kernel_size=3,
@@ -499,13 +500,13 @@ class VQVAE(EncoderDecoder):
         if compute_loss:
             codebook_loss = torch.mean((quantized - z.detach())**2)
             commitment_loss = torch.mean((quantized.detach() - z)**2)
-            loss = codebook_loss + self.config.beta * commitment_loss
+            loss = codebook_loss + self.config.commitment_beta * commitment_loss
 
         ### Compute Codebook Perplexity ###
         if compute_perplexity:
 
             ### One Hot Encode Index ###
-            one_hot_closest = torch.zeros(closest.shape[0], self.config.codebook_size)
+            one_hot_closest = torch.zeros(closest.shape[0], self.config.codebook_size, device=z.device)
             one_hot_closest[list(range(closest.shape[0])), closest] = 1
             util_proportion = torch.mean(one_hot_closest, dim=0)
 
@@ -547,7 +548,7 @@ class VQVAE(EncoderDecoder):
         
         ### Encode ###
         x = self.forward_enc(x)
-        
+
         ### Project to Quantized Dimension ###
         z = self.conv_quantize_proj(x)
 
@@ -566,6 +567,6 @@ class VQVAE(EncoderDecoder):
                 "reconstruction": reconstruction,
                 "codebook_loss": codebook_loss, 
                 "commitment_loss": commitment_loss, 
-                "loss": loss,
+                "quantization_loss": loss,
                 "perplexity": perplexity}
     

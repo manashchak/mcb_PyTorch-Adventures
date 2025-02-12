@@ -26,6 +26,11 @@ def experiment_config_parser(parser):
                         action=argparse.BooleanOptionalAction, 
                         help="Do you want to log to WandB?")
     
+    parser.add_argument("--resume_from_checkpoint", 
+                        help="Pass name of checkpoint folder to resume training from",
+                        default=None,
+                        type=str, 
+                        metavar="resume_from_checkpoint")
 def vae_config(parser):
 
     parser = parser.add_argument_group("VAE Configuration")
@@ -104,14 +109,14 @@ def vae_config(parser):
     parser.add_argument("--vq_embed_dim",
                         help="Embedding dimension for vector quantization",
                         default=4,
-                        type=float,
+                        type=int,
                         metavar="vq_embed_dim")
 
-    parser.add_argument("--beta",
+    parser.add_argument("--commitment_beta",
                         help="Beta parameter for quantization commitment loss",
                         default=0.25,
                         type=float,
-                        metavar="beta_value")
+                        metavar="commitment_beta")
 
 def discriminator_config(parser):
 
@@ -294,8 +299,8 @@ def dataset_config(parser):
     parser.add_argument_group("Dataset Config")
 
     parser.add_argument("--dataset", 
-                        help="What dataset do you want to train on? (conceptual_captions, imagenet, coco, celeba)",
-                        choices=("conceptual_captions, imagenet, coco, celeba"),
+                        help="What dataset do you want to train on? (conceptual_captions, imagenet, coco, celebam, celebahq)",
+                        choices=("conceptual_captions", "imagenet", "coco", "celeba", "celebahq"),
                         type=str, 
                         required=True)
     
@@ -373,6 +378,18 @@ def vae_training_configuration(parser):
                         default=500, 
                         type=int, 
                         metavar="val_generation_freq")
+    
+    parser.add_argument("--codebook_weight",
+                        help="Weight on quantization loss if training VQVAE",
+                        default=1.0, 
+                        type=float, 
+                        metavar="codebook_weight")
+    
+    parser.add_argument("--pixelwise_average", 
+                        help="Avg across all pixels, instead of summed errors across image and average across batch",
+                        default=False,
+                        action=argparse.BooleanOptionalAction, 
+                        metavar="pixelwise_average")
 
 def optimizer_config(parser):
     
