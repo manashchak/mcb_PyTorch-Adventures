@@ -1,10 +1,10 @@
 
-accelerate launch dup_stage1.py \
+accelerate launch stage1_vae_trainer.py \
   --experiment_name "VAETrainer" \
   --wandb_run_name "vae_celeba" \
   --working_directory "work_dir/vae_celeba" \
   --log_wandb \
-  --img_size 64 \
+  --img_size 128 \
   --in_channels 3 \
   --out_channels 3 \
   --latent_channels 4 \
@@ -29,18 +29,17 @@ accelerate launch dup_stage1.py \
   --learning_rate 4.5e-6 \
   --lr_scheduler cosine \
   --lr_warmup_steps 2500 \
-  --total_training_iterations 100000 \
+  --total_train_iterations 100000 \
   --checkpoint_iterations 5000 \
-  --per_gpu_batch_size 128 \
+  --per_gpu_batch_size 64 \
   --gradient_accumulation_steps 1 \
   --num_workers 32 \
   --max_grad_norm 1.0 \
   --dataset celeba \
   --path_to_data "/mnt/datadrive/data/CelebA/img_align_celeba/img_align_celeba/" \
   --pin_memory \
-  --random_resize \
   --interpolation bilinear \
-  --random_flip_p 0.5 \
+  --random_flip_p 0.0 \
   --reconstruction_loss_fn l1 \
   --scale_perceptual_by_var \
   --kl_weight 0.000001 \

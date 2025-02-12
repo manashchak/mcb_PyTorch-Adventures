@@ -43,7 +43,9 @@ def image_transforms(num_channels=3,
                                             [0.5 for _ in range(num_channels)]),
                         
                     ])
-
+    
+    print(image2tensor)
+    
     return image2tensor
 
 class GenericImageDataset(Dataset):
@@ -267,7 +269,8 @@ def get_dataset(dataset,
         loader = DataLoader(dataset, 
                             batch_size=batch_size,
                             num_workers=num_workers,
-                            pin_memory=pin_memory)
+                            pin_memory=pin_memory,
+                            shuffle=True)
         
     elif dataset == "imagenet": 
         if return_caption:
@@ -280,7 +283,8 @@ def get_dataset(dataset,
         loader = DataLoader(dataset, 
                             batch_size=batch_size,
                             num_workers=num_workers,
-                            pin_memory=pin_memory)
+                            pin_memory=pin_memory,
+                            shuffle=True)
     
     elif dataset == "coco":
 
@@ -294,7 +298,8 @@ def get_dataset(dataset,
                             batch_size=batch_size,
                             num_workers=num_workers,
                             pin_memory=pin_memory,
-                            collate_fn=collate_fn)
+                            collate_fn=collate_fn,
+                            shuffle=True)
         
     elif dataset == "conceptual_caption":
 
@@ -307,7 +312,8 @@ def get_dataset(dataset,
                             batch_size=batch_size, 
                             num_workers=num_workers,
                             collate_fn=collate_fn, 
-                            pin_memory=pin_memory)
+                            pin_memory=pin_memory,
+                            shuffle=True)
         
     return loader
 

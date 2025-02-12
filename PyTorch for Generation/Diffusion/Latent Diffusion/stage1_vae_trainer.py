@@ -21,6 +21,9 @@ accelerator = Accelerator(project_dir=path_to_experiment,
                           gradient_accumulation_steps=args.gradient_accumulation_steps,
                           log_with="wandb" if args.log_wandb else None)
 
+if args.log_wandb:
+    accelerator.init_trackers(args.experiment_name, init_kwargs={"wandb": {"name": args.wandb_run_name}})
+
 ### Load Dataset ###
 mini_batchsize = args.per_gpu_batch_size // args.gradient_accumulation_steps 
 dataloader = get_dataset(dataset=args.dataset,
@@ -91,10 +94,10 @@ loss_fn = VAELpipsDiscriminatorLoss(disc_start=args.disc_start,
 
 ### Load Optimizers (model params and output_logvar) and Schedulers ###
 params = list(model.parameters()) + [loss_fn.output_logvar]
-optimizer = optim.Adam(params, 
-                       lr=args.learning_rate, 
-                       betas=(args.beta1, args.beta2),
-                       weight_decay=args.weight_decay)
+optimizer = optim.AdamW(params, 
+                        lr=args.learning_rate, 
+                        betas=(args.beta1, args.beta2),
+                        weight_decay=args.weight_decay)
 
 scheduler = get_scheduler(name=args.lr_scheduler,
                           optimizer=optimizer, 
@@ -103,10 +106,10 @@ scheduler = get_scheduler(name=args.lr_scheduler,
 
 if not args.disable_discriminator:
     use_disc = not args.disable_discriminator
-    disc_optimizer = optim.Adam(loss_fn.discriminator.parameters(), 
-                                lr=args.learning_rate, 
-                                betas=(args.beta1, args.beta2),
-                                weight_decay=args.weight_decay)
+    disc_optimizer = optim.AdamW(loss_fn.discriminator.parameters(), 
+                                 lr=args.learning_rate, 
+                                 betas=(args.beta1, args.beta2),
+                                 weight_decay=args.weight_decay)
 
     disc_scheduler = get_scheduler(name=args.disc_lr_scheduler,
                                 optimizer=disc_optimizer, 
@@ -261,7 +264,12 @@ while train:
 
                 logging_string = "GEN: "
                 for k, v in vae_log.items():
-                    logging_string += f"|{k[6:] if 'train_' in k else k}: {round(v.item() if torch.is_tensor(v) else v, 6)}"
+                    v = v.item() if torch.is_tensor(v) else v
+                    if "lr" in k:
+                        v = f"{v:.1e}"
+                    else:
+                        v = round(v, 4)
+                    logging_string += f"|{k}: {v}"
 
                 ### Print to Console ###
                 accelerator.print(logging_string)
@@ -283,8 +291,15 @@ while train:
 
                 logging_string = "DIS: "
                 for k, v in disc_log.items():
-                    logging_string += f"|{k[6:] if 'train_' in k else k}: {round(v.item() if torch.is_tensor(v) else v, 6)}"
+                    v = v.item() if torch.is_tensor(v) else v
+                    if "lr" in k:
+                        v = f"{v:.1e}"
+                    else:
+                        v = round(v, 4)
+                    logging_string += f"|{k}: {v}"
 
+                ### Print to Console ###
+                accelerator.print(logging_string)
 
                 ### Push to WandB ###
                 if args.log_wandb:
@@ -306,7 +321,7 @@ while train:
                 model.eval()
 
                 with torch.no_grad():
-                    reconstructions = model(images)["reconstruction"]
+                    reconstruction = model(val_images)["reconstruction"]
 
                 save_generated_images(reconstruction.detach(),
                                       args.val_image_gen_save_path,

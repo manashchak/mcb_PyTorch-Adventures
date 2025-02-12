@@ -24,8 +24,7 @@ def experiment_config_parser(parser):
 
     parser.add_argument("--log_wandb",
                         action=argparse.BooleanOptionalAction, 
-                        help="Do you want to log to WandB?",
-                        default=False)
+                        help="Do you want to log to WandB?")
     
 def vae_config(parser):
 
@@ -326,6 +325,7 @@ def dataset_config(parser):
     parser.add_argument("--random_flip_p",
                         help="Random Horizontal Flip Probability",
                         default=0.5, 
+                        type=float,
                         metavar="random_flip")
     
     
