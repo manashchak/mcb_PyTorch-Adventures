@@ -1,9 +1,10 @@
 import os
 import torch
 import torch.nn as nn
-from typing import Literal
+from typing import Literal, Tuple
 from VisionTransformer import PatchEmbed, EncoderBlock
 from transformers import ViTMAEModel
+from UperNet import UperNetHead
 from dataclasses import dataclass
 from safetensors.torch import load_file
 from utils import sincos_embeddings, random_masking, patchify
@@ -35,9 +36,13 @@ class MAEConfig:
     decoder_mlp_ratio: int = 4
 
     ### Image Classification Config ###
-    num_classes = 1000
+    num_classes: int = 1000
 
     ### Segmentation Head Config ###
+    psp_bin_size: Tuple = (1,2,4,6)
+    feature_layers: Tuple = (3,5,7,11)
+    channels_per_layer: Tuple = (768, 768, 768, 768)
+    rescales: Tuple = (4,1,2,0.5)
     
     ### MAE Settings ###
     fused_attention: bool = True
@@ -176,7 +181,7 @@ class VITMAEDecoder(nn.Module):
 
         self.decoder_layer_norm = nn.LayerNorm(config.decoder_embed_dim, eps=1e-6)
 
-    def forward(self, x, restore_idx):
+    def forward(self, x, restore_idx, output_hidden_states=False):
         
         ### Project Encoder Embeddings to Decoder Embeddings ###
         x = self.encoder2decoder_embbedding_proj(x)
@@ -199,13 +204,18 @@ class VITMAEDecoder(nn.Module):
         x = x + self.dec_pos_embed
 
         ### Pass Through Transformer Blocks ###
+        hidden_states = []
         for block in self.decoder_blocks:
             x = block(x)
+            hidden_states.append(x)
         
         ### Normalize Output ###
         x = self.decoder_layer_norm(x)
-
-        return x
+        
+        if output_hidden_states:
+            return x, hidden_states
+        else:
+            return x
 
 class ViTMAEForPreTraining(nn.Module):
     """
@@ -364,8 +374,22 @@ class ViTMAEForImageClassification(ViTMAEForDownstreamTasks):
 
         
 class ViTMAEForSegmentation(ViTMAEForDownstreamTasks):
-    def __init__(self, mae_config):
-        super(ViTMAEForSegmentation, self).__init__()
+    def __init__(self, config):
+
+        super(ViTMAEForSegmentation, self).__init__():
+
+        self.config = config
+
+        self.encoder = self.load_backbone(config)
+
+        self.hf_backbone = False
+        if config.pretrained_backbone == "pretrained_huggingface":
+            self.hf_backbone = True
+
+        self.upernet = UperNetHead(config)
+
+    def forward(self, x):
+        pass
 
 def _init_weights_(module: nn.Module):
 
