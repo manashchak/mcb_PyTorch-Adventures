@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from transformers import get_scheduler
 from tqdm import tqdm
 
-from modules import VAE, VQVAE, LDMConfig, LpipsDiscriminatorLoss
+from modules import VAE, LDMConfig, LpipsDiscriminatorLoss
 from cli_parser import vae_trainer_cli_parser
 from dataset import get_dataset
 from utils import load_val_images, save_generated_images
@@ -48,11 +48,7 @@ config = LDMConfig(img_size=args.img_size,
                    attention_residual_connections=args.attention_residual_connections, 
                    vae_channels_per_block=args.vae_channels_per_block,
                    vae_up_down_factor=args.vae_up_down_factor, 
-                   vae_up_down_kernel_size=args.vae_up_down_kernel_size,
-                   quantize=args.quantize, 
-                   codebook_size=args.codebook_size, 
-                   vq_embed_dim=args.vq_embed_dim, 
-                   commitment_beta=args.commitment_beta)   
+                   vae_up_down_kernel_size=args.vae_up_down_kernel_size)   
 
 ### Get Samples for Testing Generation ###
 if args.val_img_folder_path is not None and accelerator.is_main_process:
@@ -62,13 +58,8 @@ if args.val_img_folder_path is not None and accelerator.is_main_process:
                                               device=accelerator.device, 
                                               dtype=accelerator.mixed_precision)
     
-### Load VAE/VQ-VAE Model ###
-if args.quantize:
-    accelerator.print("Training VQ-VAE Model")
-    model = VQVAE(config)
-else:
-    accelerator.print("Training VAE Model")
-    model = VAE(config)
+### Load VAE Model ###
+model = VAE(config)
 
 total_parameters = 0
 for name, param in model.named_parameters():
@@ -85,17 +76,15 @@ loss_fn = LpipsDiscriminatorLoss(disc_start=args.disc_start,
                                  disc_kernel_size=args.disc_kernel_size, 
                                  disc_leaky_relu_slope=args.disc_leaky_relu_slope,
                                  disc_loss=args.disc_loss, 
-                                 disc_weight=0, #args.disc_weight,
+                                 disc_weight=args.disc_weight,
                                  use_lpips=not args.disable_lpips, 
                                  use_lpips_package=True, 
                                  path_to_lpips_checkpoint=args.lpips_checkpoint, 
                                  lpips_weight=args.lpips_weight, 
-                                 reconstruction_loss=args.reconstruction_loss_fn, 
-                                 use_logvar_scaling=args.scale_perceptual_by_var)
+                                 reconstruction_loss=args.reconstruction_loss_fn)
 
 ### Load Optimizers (model params and output_logvar) and Schedulers ###
-params = list(model.parameters()) + [loss_fn.output_logvar]
-optimizer = optim.AdamW(params, 
+optimizer = optim.AdamW(model.parameters(), 
                         lr=args.learning_rate, 
                         betas=(args.beta1, args.beta2),
                         weight_decay=args.weight_decay)
@@ -125,26 +114,12 @@ model, loss_fn, optimizer, disc_optimizer, scheduler, disc_scheduler, dataloader
 accelerator.register_for_checkpointing(disc_scheduler, scheduler)
 
 ### Initialize Variables to Accumulate ###
-if not args.quantize:
-    model_log = {"loss": 0,
-                "perceptual_loss": 0,
-                "reconstruction_loss": 0, 
-                "lpips_loss": 0,
-                "kl_loss": 0,
-                "generator_loss": 0}
-else:
-
-    model_log = {"loss": 0,
-                "perceptual_loss": 0,
-                "reconstruction_loss": 0, 
-                "lpips_loss": 0,
-                "codebook_loss": 0,
-                "commitment_loss": 0,
-                "quantization_loss": 0, 
-                "perplexity": 0,
-                "generator_loss": 0}
-
-    
+model_log = {"loss": 0,
+            "perceptual_loss": 0,
+            "reconstruction_loss": 0, 
+            "lpips_loss": 0,
+            "kl_loss": 0,
+            "generator_loss": 0}
 
 disc_log = {"disc_loss": 0, 
             "logits_real": 0,
@@ -187,13 +162,7 @@ while train:
         reconstruction = model_output["reconstruction"]
 
         ### Parse Architecture Specific Outputs ###
-        if not args.quantize:
-            kl_loss = model_output["kl_loss"]
-        else:
-            quantization_loss  = model_output["quantization_loss"]
-            codebook_loss  = model_output["codebook_loss"]
-            commitment_loss  = model_output["commitment_loss"]
-            perplexity = model_output["perplexity"]
+        kl_loss = model_output["kl_loss"]
         
         ### Toggles for Updating Discriminator vs Generator ###
         gd_toggle = (global_step % 2 == 0)
@@ -230,10 +199,7 @@ while train:
                                                                                  last_layer)
             
                 ### Compute Total Weighted Loss ###
-                if not args.quantize:
-                    model_specific_loss = args.kl_weight * kl_loss.mean()
-                else:
-                    model_specific_loss = args.codebook_weight * quantization_loss
+                model_specific_loss = args.kl_weight * kl_loss.mean()
 
                 loss = perceptual_loss + model_specific_loss + args.disc_weight * adaptive_weight * generator_loss
 
@@ -248,26 +214,12 @@ while train:
                 optimizer.zero_grad(set_to_none=True)
 
                 ### Create Log of Everything ###
-
-                if not args.quantize:
-                    log = {"loss": loss,
-                           "perceptual_loss": perceptual_loss,
-                           "reconstruction_loss": reconstruction_loss, 
-                           "lpips_loss": lpips_loss,
-                           "kl_loss": kl_loss,
-                           "generator_loss": generator_loss}
-                    
-                else:
-
-                    log = {"loss": loss,
-                           "perceptual_loss": perceptual_loss,
-                           "reconstruction_loss": reconstruction_loss, 
-                           "lpips_loss": lpips_loss,
-                           "quantization_loss": quantization_loss,
-                           "codebook_loss": codebook_loss, 
-                           "commitment_loss": commitment_loss,
-                           "perplexity": perplexity,
-                           "generator_loss": generator_loss}
+                log = {"loss": loss,
+                        "perceptual_loss": perceptual_loss,
+                        "reconstruction_loss": reconstruction_loss, 
+                        "lpips_loss": lpips_loss,
+                        "kl_loss": kl_loss,
+                        "generator_loss": generator_loss}
 
                 ### Accumulate Log ###
                 for key, value in log.items():
@@ -375,6 +327,8 @@ while train:
                                       args.val_image_gen_save_path,
                                       global_step,
                                       image_files)
+                
+                model.train()
             
             accelerator.wait_for_everyone()
 

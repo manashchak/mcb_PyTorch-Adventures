@@ -37,9 +37,7 @@ class LpipsDiscriminatorLoss(nn.Module):
                  use_lpips_package=False, 
                  path_to_lpips_checkpoint="lpips_vgg.pt",
                  lpips_weight=1.0,
-                 reconstruction_loss="l1",
-                 use_logvar_scaling=True, 
-                 logvar_init=0.0):
+                 reconstruction_loss="l1"):
         
         super(LpipsDiscriminatorLoss, self).__init__()
 
@@ -64,9 +62,6 @@ class LpipsDiscriminatorLoss(nn.Module):
                                           depth=disc_depth, 
                                           kernel_size=disc_kernel_size, 
                                           leaky_relu_slope=disc_leaky_relu_slope).apply(init_weights)
-
-        ### LogVar Scaling (Im not sure where this came from but its in the implementation) ###
-        self.output_logvar = nn.Parameter(torch.ones(size=()) * logvar_init, requires_grad=use_logvar_scaling)
 
         ### Discriminator Loss ###
         if disc_loss == "hinge":
@@ -112,9 +107,6 @@ class LpipsDiscriminatorLoss(nn.Module):
         ### Put Together Reconstruction and Perceptual Losses ###
         perceptual_loss = reconstruction_loss + self.lpips_weight * lpips_loss
 
-        ## Scale Perceptual Loss ###
-        perceptual_loss = perceptual_loss / torch.exp(self.output_logvar) + self.output_logvar
-        
         ### Sum Together the Loss by Pixel and Average ###
         if img_average:
             perceptual_loss = perceptual_loss.sum() / perceptual_loss.shape[0]

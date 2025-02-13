@@ -1,10 +1,10 @@
 
-accelerate launch stage1_vae_trainer.py \
+accelerate launch --dynamo_backend inductor stage1_vae_trainer.py \
   --experiment_name "VAETrainer" \
-  --wandb_run_name "vae_celebahq" \
+  --wandb_run_name "vae_celebahq_bf" \
   --working_directory "work_dir/vae_celebahq" \
   --log_wandb \
-  --img_size 256 \
+  --img_size 192 \
   --in_channels 3 \
   --out_channels 3 \
   --latent_channels 4 \
@@ -18,18 +18,18 @@ accelerate launch stage1_vae_trainer.py \
   --disc_depth 3 \
   --disc_kernel_size 4 \
   --disc_leaky_relu_slope 0.2 \
-  --disc_learning_rate 4.5e-6 \
-  --disc_lr_scheduler cosine \
-  --disc_lr_warmup_steps 2000 \
-  --disc_start 20000 \
+  --disc_learning_rate 5e-5 \
+  --disc_lr_scheduler constant_with_warmup \
+  --disc_lr_warmup_steps 1500 \
+  --disc_start 30001 \
   --disc_weight 0.5 \
   --disc_loss hinge \
   --use_lpips_package \
   --lpips_weight 0.5 \
-  --learning_rate 4.5e-6 \
+  --learning_rate 5e-5 \
   --lr_scheduler cosine \
-  --lr_warmup_steps 2000 \
-  --total_train_iterations 50000 \
+  --lr_warmup_steps 1500 \
+  --total_train_iterations 125000 \
   --checkpoint_iterations 2500 \
   --per_gpu_batch_size 16 \
   --gradient_accumulation_steps 1 \
@@ -41,10 +41,9 @@ accelerate launch stage1_vae_trainer.py \
   --interpolation bilinear \
   --random_flip_p 0.0 \
   --reconstruction_loss_fn l1 \
-  --scale_perceptual_by_var \
-  --codebook_weight 1 \
+  --kl_weight 0.000001 \
   --val_img_folder_path src/samples/celebahq \
-  --val_image_gen_save_path src/celebahq_vae \
+  --val_image_gen_save_path src/celebahq_vae_bf \
   --val_generation_freq 1000 \
   --beta1 0.5 \
   --beta2 0.999 \

@@ -43,9 +43,7 @@ def image_transforms(num_channels=3,
                                             [0.5 for _ in range(num_channels)]),
                         
                     ])
-    
-    print(image2tensor)
-    
+
     return image2tensor
 
 class GenericImageDataset(Dataset):

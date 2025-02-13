@@ -465,7 +465,10 @@ class VQVAE(EncoderDecoder):
         super(VQVAE, self).__init__(config=config)
 
         self.config = config
-
+        
+        ### Ensure Quantization On in VQVAE ###
+        self.config.quantize = True
+        
         ### Projections To/From VQ Embed Dim ###
         self.conv_quantize_proj = nn.Conv2d(config.latent_channels, 
                                             config.vq_embed_dim, 

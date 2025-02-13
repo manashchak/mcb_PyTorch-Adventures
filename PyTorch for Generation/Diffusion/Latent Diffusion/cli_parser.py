@@ -350,11 +350,6 @@ def vae_training_configuration(parser):
                         type=str, 
                         metavar="reconstruction_loss_fn")
     
-    parser.add_argument("--scale_perceptual_by_var",
-                        help="Toggle to scale perceptual loss by the predicted log variance",
-                        action=argparse.BooleanOptionalAction,
-                        default=False)
-    
     parser.add_argument("--kl_weight",
                         help="What is the weight of the KL Loss term",
                         default=1e-6,
