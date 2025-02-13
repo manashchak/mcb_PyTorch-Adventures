@@ -24,7 +24,6 @@ class VanillaLoss(nn.Module):
 
 class LpipsDiscriminatorLoss(nn.Module):
     def __init__(self, 
-                 disc_start, 
                  use_disc=True,
                  disc_in_channels=3, 
                  disc_start_dim=64, 
@@ -32,7 +31,6 @@ class LpipsDiscriminatorLoss(nn.Module):
                  disc_kernel_size=3,
                  disc_leaky_relu_slope=0.2,
                  disc_loss="hinge",
-                 disc_weight=1.0,
                  use_lpips=True, 
                  use_lpips_package=False, 
                  path_to_lpips_checkpoint="lpips_vgg.pt",
@@ -41,10 +39,7 @@ class LpipsDiscriminatorLoss(nn.Module):
         
         super(LpipsDiscriminatorLoss, self).__init__()
 
-        self.disc_start = disc_start
-        self.disc_weight = disc_weight
         self.lpips_weight = lpips_weight
-        self.use_disc = use_disc
         self.use_lpips = use_lpips
         
         ### Load LPIPS Model ###
