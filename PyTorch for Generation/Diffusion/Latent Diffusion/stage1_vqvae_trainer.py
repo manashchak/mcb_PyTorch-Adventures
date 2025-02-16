@@ -109,7 +109,7 @@ if training_config["use_patchgan"]:
         discriminator = nn.SyncBatchNorm.convert_sync_batchnorm(discriminator)
 
 ### Print Out Number of Trainable Parameters ###
-accelerator.print(f"NUMBER OF VAE PARAMETERS: {count_num_params(model)}")
+accelerator.print(f"NUMBER OF VQVAE PARAMETERS: {count_num_params(model)}")
 if use_disc:
     accelerator.print(f"NUMBER OF DISC PARAMETERS: {count_num_params(discriminator)}")
 
@@ -178,12 +178,15 @@ if training_config["val_img_folder_path"] is not None:
 
 ### Initialize Variables to Accumulate ###
 model_log = {"loss": 0,
-            "perceptual_loss": 0,
-            "reconstruction_loss": 0, 
-            "lpips_loss": 0,
-            "kl_loss": 0,
-            "generator_loss": 0,
-            "adp_weight": 0}
+             "perceptual_loss": 0,
+             "reconstruction_loss": 0, 
+             "lpips_loss": 0,
+             "codebook_loss": 0,
+             "commitment_loss": 0,
+             "quantization_loss": 0,
+             "generator_loss": 0,
+             "perplexity": 0,
+             "adp_weight": 0}
 
 disc_log = {"disc_loss": 0, 
             "logits_real": 0,
@@ -274,9 +277,9 @@ while train:
 
                     loss = loss + adaptive_weight * gen_loss * training_config["disc_weight"]
                 
-                ### Compute KL Loss ###
-                kl_loss = model_outputs["kl_loss"].mean()
-                loss = loss + kl_loss * training_config["kl_weight"]
+                ### Compute Quantization Loss ###
+                quantization_loss = model_outputs["quantization_loss"].mean()
+                loss = loss + quantization_loss
                 
                 ### Update Model ###
                 accelerator.backward(loss)
@@ -292,14 +295,17 @@ while train:
                        "perceptual_loss": perceptual_loss,
                        "reconstruction_loss": reconstruction_loss, 
                        "lpips_loss": lpips_loss,
-                       "kl_loss": kl_loss,
+                       "quantization_loss": quantization_loss,
+                       "codebook_loss": model_outputs["codebook_loss"],
+                       "commitment_loss": model_outputs["commitment_loss"],
+                       "perplexity": model_outputs["perplexity"],
                        "generator_loss": gen_loss,
                        "adp_weight": adaptive_weight}
 
                 ### Accumulate Log ###
                 for key, value in log.items():
                     model_log[key] += value.mean() / training_config["gradient_accumulations_steps"]
-
+                    
         else:
 
             disc_optimizer.zero_grad()

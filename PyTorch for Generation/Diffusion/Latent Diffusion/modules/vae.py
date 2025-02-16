@@ -531,14 +531,16 @@ class VQVAE(EncoderDecoder):
         ### Permute Back to Original Image Shape (B,C,H,W) ###
         quantized = quantized.permute(0,3,2,1)
 
-        return_output = (quantized,)
-
+        output = {"quantized": quantized}
         if compute_loss:
-            return_output += (codebook_loss, commitment_loss, loss)
-        if compute_perplexity:
-            return_output += (perplexity,)
+            output["codebook_loss"] = codebook_loss
+            output["commitment_loss"] = commitment_loss
+            output["quantization_loss"] = loss
 
-        return return_output
+        if compute_perplexity:
+            output["perplexity"] = perplexity
+
+        return output
 
     def encode(self, x):
         
@@ -565,19 +567,15 @@ class VQVAE(EncoderDecoder):
         z = self.conv_quantize_proj(x)
 
         ### Quantize Embeddings ###
-        quantized, codebook_loss, commitment_loss, loss, perplexity = self.quantize(z, 
-                                                                                    compute_loss=True,
-                                                                                    compute_perplexity=True)
+        output = self.quantize(z, 
+                               compute_loss=True,
+                               compute_perplexity=True)
 
         ### Project Quantized Back to Latent Dimension ###
-        x = self.conv_latent_proj(quantized)
+        x = self.conv_latent_proj(output["quantized"])
 
         ### Decode ###
         reconstruction = self.forward_dec(x)
+        output["reconstruction"] = reconstruction
 
-        return {"quantized": quantized, 
-                "reconstruction": reconstruction,
-                "codebook_loss": codebook_loss, 
-                "commitment_loss": commitment_loss, 
-                "quantization_loss": loss,
-                "perplexity": perplexity}
+        return output
