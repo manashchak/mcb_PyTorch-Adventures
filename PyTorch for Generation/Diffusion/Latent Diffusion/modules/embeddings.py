@@ -32,3 +32,10 @@ class PositionalEncoding(nn.Module):
         encoding = nn.Parameter(encoding, requires_grad=self.requires_grad)
 
         return encoding
+    
+class ClassConditionalEmbeddings(nn.Module):
+    
+    """
+    Class conditional generation (where each class is identified as a index) 
+    """
+    pass

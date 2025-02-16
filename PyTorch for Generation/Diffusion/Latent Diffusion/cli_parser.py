@@ -31,92 +31,21 @@ def experiment_config_parser(parser):
                         default=None,
                         type=str, 
                         metavar="resume_from_checkpoint")
-def vae_config(parser):
+    
+    parser.add_argument("--training_config",
+                        help="Path to config file for all training information",
+                        required=True,
+                        type=str, 
+                        metavar="training_config")
+# def vae_config(parser):
 
-    parser = parser.add_argument_group("VAE Configuration")
+#     parser = parser.add_argument_group("VAE Configuration")
 
-    parser.add_argument("--img_size",
-                        help="Input image resolution for VAE",
-                        default=256,
-                        type=int,
-                        metavar="img_size")
-
-    parser.add_argument("--in_channels",
-                        help="Number of input channels for images",
-                        default=3,
-                        type=int,
-                        metavar="in_channels")
-
-    parser.add_argument("--out_channels",
-                        help="Number of output channels for VAE",
-                        default=3,
-                        type=int,
-                        metavar="out_channels")
-
-    parser.add_argument("--latent_channels",
-                        help="Number of latent channels in compressed space",
-                        default=4,
-                        type=int,
-                        metavar="latent_channels")
-
-    parser.add_argument("--residual_layers_per_block",
-                        help="Number of residual layers per block in the encoder",
-                        default=2,
-                        type=int,
-                        metavar="residual_layers")
-
-    parser.add_argument("--attention_layers",
-                        help="Number of attention layers per block in the encoder",
-                        default=1,
-                        type=int,
-                        metavar="attention_layers")
-
-    parser.add_argument("--attention_residual_connections",
-                        help="Use residual connections in attention layers",
-                        action=argparse.BooleanOptionalAction,
-                        default=True)
-
-    parser.add_argument("--vae_channels_per_block",
-                        help="Number of channels per block for VAE",
-                        nargs="+",
-                        default=(128, 256, 512, 512),
-                        type=int,
-                        metavar="channels_per_block")
-
-    parser.add_argument("--vae_up_down_factor",
-                        help="Scaling factor for up/downsampling in the VAE",
-                        default=2,
-                        type=int,
-                        metavar="up_down_factor")
-
-    parser.add_argument("--vae_up_down_kernel_size",
-                        help="Kernel size for up/downsampling operations in the VAE",
-                        default=3,
-                        type=int,
-                        metavar="kernel_size")
-
-    parser.add_argument("--quantize",
-                        action=argparse.BooleanOptionalAction,
-                        help="Enable quantization for VAE",
-                        default=False)
-
-    parser.add_argument("--codebook_size",
-                        help="Number of embeddings in the codebook for vector quantization",
-                        default=16384,
-                        type=int,
-                        metavar="codebook_size")
-
-    parser.add_argument("--vq_embed_dim",
-                        help="Embedding dimension for vector quantization",
-                        default=4,
-                        type=int,
-                        metavar="vq_embed_dim")
-
-    parser.add_argument("--commitment_beta",
-                        help="Beta parameter for quantization commitment loss",
-                        default=0.25,
-                        type=float,
-                        metavar="commitment_beta")
+#     parser.add_argument("--path_to_vae_config",
+#                         help="Path to yaml config file for VAE/VQVAE",
+#                         required=True, 
+#                         type=str, 
+#                         metavar="path_to_vae_config")
 
 def discriminator_config(parser):
 
@@ -181,14 +110,7 @@ def discriminator_config(parser):
                         default=1.0,
                         type=float,
                         metavar="disc_weight")
-    
-    parser.add_argument("--disc_loss", 
-                        help="What loss function for the discriminator?",
-                        default="hinge",
-                        choices=("hinge", "vanilla"),
-                        type=str,
-                        metavar="disc_loss")
-    
+
 def lpips_config(parser):
 
     parser = parser.add_argument_group("LPIPS Configuration")
@@ -299,8 +221,8 @@ def dataset_config(parser):
     parser.add_argument_group("Dataset Config")
 
     parser.add_argument("--dataset", 
-                        help="What dataset do you want to train on? (conceptual_captions, imagenet, coco, celebam, celebahq)",
-                        choices=("conceptual_captions", "imagenet", "coco", "celeba", "celebahq"),
+                        help="What dataset do you want to train on? (conceptual_captions, imagenet, coco, celebam, celebahq, birds)",
+                        choices=("conceptual_captions", "imagenet", "coco", "celeba", "celebahq", "birds"),
                         type=str, 
                         required=True)
     
@@ -356,8 +278,14 @@ def vae_training_configuration(parser):
                         type=float, 
                         metavar="kl_weight")
     
+    parser.add_argument("--num_val_random_samples",
+                        help="How many samples do you want to randomly sample to plot reconstructions for?",
+                        default=8,
+                        type=int,
+                        metavar="num_val_random_samples")
+
     parser.add_argument("--val_img_folder_path", 
-                        help="Folder with images you want to evaluate",
+                        help="Folder with images you want to evaluate (overrides num_val_random_samples with specific files)",
                         default=None,
                         type=str, 
                         metavar="val_img_folder_path")

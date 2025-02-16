@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-class PatchGAN(nn.Module):
+class NLayerDiscriminator(nn.Module):
 
     """
     PatchGAN discriminator as defined in Image to Image Translation w/ Conditional Adversarial Networks
@@ -16,7 +16,7 @@ class PatchGAN(nn.Module):
                  padding=1,
                  leaky_relu_slope=0.2):
         
-        super(PatchGAN, self).__init__()
+        super(NLayerDiscriminator, self).__init__()
 
         current_filters = start_dim
         layers = nn.ModuleList([])

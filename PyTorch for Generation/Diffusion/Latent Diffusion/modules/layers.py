@@ -27,7 +27,7 @@ class UpSampleBlock2D(nn.Module):
         self.factor = upsample_factor
 
         self.upsample = nn.Sequential(
-            nn.Upsample(scale_factor=upsample_factor),
+            nn.Upsample(scale_factor=upsample_factor, mode="nearest"),
             nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=1, padding='same')
         )
 

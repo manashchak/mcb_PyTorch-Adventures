@@ -1,0 +1,24 @@
+vqvae:
+  img_size: 256
+  in_channels: 3
+  out_channels: 3
+  latent_channels: 4
+  residual_layers_per_block: 2
+  attention_layers: 1
+  attention_residual_connections: True
+  post_encoder_latent_proj: True
+  pre_decoder_latent_proj: True
+  vae_channels_per_block:
+    - 128
+    - 256
+    - 512
+    - 512
+  vae_up_down_factor: 2
+  vae_up_down_kerel_size: 3
+
+  ### Additional VQ Configs ###
+  quantize: True
+  codebook_size: 16384
+  vq_embed_dim: 4
+  commitment_beta: 0.25
+  

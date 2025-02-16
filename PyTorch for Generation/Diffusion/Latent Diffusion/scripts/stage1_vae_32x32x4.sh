@@ -1,50 +1,7 @@
 
-accelerate launch stage1_vae_trainer.py \
+accelerate launch stage1.py \
   --experiment_name "VAETrainer" \
-  --wandb_run_name "vae_celebahq_large" \
-  --working_directory "work_dir/vae_celebahq_large" \
+  --wandb_run_name "vae_bird_origgan" \
+  --working_directory "work_dir/vae_birds" \
   --log_wandb \
-  --img_size 256 \
-  --in_channels 3 \
-  --out_channels 3 \
-  --latent_channels 4 \
-  --residual_layers_per_block 2 \
-  --attention_layers 1 \
-  --attention_residual_connections \
-  --vae_channels_per_block 128 256 512 512 \
-  --vae_up_down_factor 2 \
-  --vae_up_down_kernel_size 3 \
-  --disc_start_dim 64 \
-  --disc_depth 3 \
-  --disc_kernel_size 4 \
-  --disc_leaky_relu_slope 0.2 \
-  --disc_learning_rate 5e-5 \
-  --disc_lr_scheduler constant_with_warmup \
-  --disc_lr_warmup_steps 1500 \
-  --disc_start 50001 \
-  --disc_weight 0.5 \
-  --disc_loss hinge \
-  --use_lpips_package \
-  --lpips_weight 0.5 \
-  --learning_rate 5e-5 \
-  --lr_scheduler cosine \
-  --lr_warmup_steps 1500 \
-  --total_train_iterations 200000 \
-  --checkpoint_iterations 2500 \
-  --per_gpu_batch_size 16 \
-  --gradient_accumulation_steps 1 \
-  --num_workers 32 \
-  --max_grad_norm 1.0 \
-  --dataset celebahq \
-  --path_to_data "/mnt/datadrive/data/CelebAMask-HQ/CelebA-HQ-img/" \
-  --pin_memory \
-  --interpolation bilinear \
-  --random_flip_p 0.0 \
-  --reconstruction_loss_fn l1 \
-  --kl_weight 0.000001 \
-  --val_img_folder_path src/samples/celebahq \
-  --val_image_gen_save_path src/celebahq_large \
-  --val_generation_freq 250 \
-  --beta1 0.5 \
-  --beta2 0.999 \
-  --weight_decay 5e-3
+  --training_config "configs/stage1_vae_train.yaml"

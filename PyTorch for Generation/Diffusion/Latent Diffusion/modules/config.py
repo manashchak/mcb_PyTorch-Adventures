@@ -14,10 +14,12 @@ class LDMConfig:
     out_channels: int = 3
     latent_channels: int = 4
 
-    ### Encoder Config ###
+    ### Encoder/Decoder Config ###
     residual_layers_per_block: int = 2
     attention_layers: int = 1
     attention_residual_connections: bool = True
+    post_encoder_latent_proj: bool = True
+    pre_decoder_latent_proj: bool = True
 
     ### Block Config ###
     vae_channels_per_block: Tuple = (128, 256, 512, 512)
@@ -30,7 +32,7 @@ class LDMConfig:
     vq_embed_dim: float = 4
     commitment_beta: float = 0.25
 
-    ### VAE Scaling ###
+    ### VAE Scaling (Variance Normalization for Diffusion) ###
     vae_scale_factor: float = None
 
     ###################

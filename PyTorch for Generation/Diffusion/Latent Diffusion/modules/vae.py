@@ -56,6 +56,7 @@ class VAEAttentionResidualBlock(nn.Module):
                     embedding_dimension=in_channels,
                     head_dim=attention_head_dim,
                     attn_dropout=dropout_p,
+                    groupnorm_groups=groupnorm_groups,
                     attention_residual_connection=attention_residual_connection,
                     return_shape="2D"
                 )
@@ -126,7 +127,7 @@ class VAEEncoder(nn.Module):
         self.latent_channels = out_channels
         self.residual_layers_per_block = residual_layers_per_block
         self.channels_per_block = channels_per_block
-
+        
         self.conv_in = nn.Conv2d(in_channels=in_channels, 
                                  out_channels=self.channels_per_block[0],
                                  kernel_size=3, 
@@ -339,12 +340,22 @@ class EncoderDecoder(nn.Module):
                                   upsample_factor=config.vae_up_down_factor, 
                                   upsample_kernel_size=config.vae_up_down_kernel_size)
         
+        encoder_out_channels = 2 * config.latent_channels if not config.quantize else config.latent_channels
+        self.post_encoder_conv = nn.Conv2d(encoder_out_channels, encoder_out_channels, kernel_size=1, stride=1) \
+                                    if config.post_encoder_latent_proj else nn.Identity()
+        self.pre_decoder_conv = nn.Conv2d(config.latent_channels, config.latent_channels, kernel_size=1, stride=1) \
+                                    if config.pre_decoder_latent_proj else nn.Identity()
+        
     def forward_enc(self, x):
-        return self.encoder(x)
+        x = self.encoder(x)
+        x = self.post_encoder_conv(x)
+        return x
     
     def forward_dec(self, x):
-        return self.decoder(x)
-    
+        x = self.pre_decoder_conv(x)
+        x = self.decoder(x)
+        return x
+
 class VAE(EncoderDecoder):
     
     """
@@ -412,11 +423,12 @@ class VAE(EncoderDecoder):
                 scale_factor = 1
 
         z = z * scale_factor
-
-        output = (z, )
+        
+        output = {"posterior": z}
 
         if return_stats:
-            output += (mu, logvar)
+            output["mu"] = mu
+            output["logvar"] = logvar
 
         return output
 
@@ -429,7 +441,7 @@ class VAE(EncoderDecoder):
             if self.config.vae_scale_factor is not None:
                 scale_factor = self.config.vae_scale_factor
             else:
-                scale_factor = 1
+                scale_factor = 1.0
 
         x = x / scale_factor
         
@@ -438,20 +450,17 @@ class VAE(EncoderDecoder):
     def forward(self, x):
 
         ### Encode and get Statistics ###
-        posterior, mu, logvar = self.encode(x, return_stats=True)
+        output = self.encode(x, return_stats=True)
       
         ### Reconstruct w/ Decoder ###
-        reconstruction = self.forward_dec(posterior)
+        reconstruction = self.forward_dec(output["posterior"])
+        output["reconstruction"] = reconstruction
 
         ### Compute KL Loss ###
-        kl_loss = self.kl_loss(mu, logvar)
+        kl_loss = self.kl_loss(output["mu"], output["logvar"])
+        output["kl_loss"] = kl_loss
 
-        return {"posterior": posterior, 
-                "reconstruction": reconstruction, 
-                "kl_loss": kl_loss,
-                "mu": mu, 
-                "logvar": logvar}
-
+        return output
 
 class VQVAE(EncoderDecoder):
 
@@ -572,4 +581,3 @@ class VQVAE(EncoderDecoder):
                 "commitment_loss": commitment_loss, 
                 "quantization_loss": loss,
                 "perplexity": perplexity}
-    

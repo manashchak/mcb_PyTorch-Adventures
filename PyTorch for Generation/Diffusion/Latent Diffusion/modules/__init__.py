@@ -1,5 +1,5 @@
 from .config import LDMConfig
-from .discriminator import PatchGAN
+from .discriminator import PatchGAN, init_weights
 from .embeddings import PositionalEncoding
 from .layers import UpSampleBlock2D, DownSampleBlock2D, ResidualBlock2D, \
                         EncoderBlock2D, DecoderBlock2D

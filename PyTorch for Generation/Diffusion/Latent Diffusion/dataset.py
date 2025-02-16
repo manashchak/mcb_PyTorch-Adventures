@@ -18,7 +18,7 @@ def image_transforms(num_channels=3,
                      img_size=256, 
                      random_resize=True, 
                      interpolation="bilinear",
-                     random_flip_p=0.5,
+                     random_flip_p=0,
                      train=True):
 
     interpolation_dict = {"nearest": InterpolationMode.NEAREST, 
@@ -27,7 +27,7 @@ def image_transforms(num_channels=3,
     
 
     if random_resize and train: 
-        resize = transforms.RandomResizedCrop(img_size, scale=(0.2, 1.0), interpolation=interpolation_dict[interpolation])
+        resize = transforms.RandomResizedCrop(img_size, scale=(0.6, 1.0), interpolation=interpolation_dict[interpolation])
     else:
         resize = transforms.Resize((img_size, img_size))
 
@@ -43,7 +43,7 @@ def image_transforms(num_channels=3,
                                             [0.5 for _ in range(num_channels)]),
                         
                     ])
-
+    
     return image2tensor
 
 class GenericImageDataset(Dataset):
@@ -297,7 +297,21 @@ def get_dataset(dataset,
                             num_workers=num_workers,
                             pin_memory=pin_memory,
                             shuffle=True)
-    
+        
+    elif dataset == "birds":
+        if return_caption:
+            raise Exception("CUB Birds has no captions!")
+
+        dataset = GenericImageDataset(path_to_data=path_to_data, 
+                                      transform=img_transform, 
+                                      nested=True)
+        
+        loader = DataLoader(dataset, 
+                            batch_size=batch_size,
+                            num_workers=num_workers,
+                            pin_memory=pin_memory,
+                            shuffle=True)
+
     elif dataset == "coco":
 
         dataset = COCODataset(path_to_data=path_to_data, 
@@ -336,6 +350,7 @@ if __name__ == "__main__":
     path_to_imagenet = "/mnt/datadrive/data/ImageNet/train/"
     path_to_conceptual = "/mnt/datadrive/data/ConceptualCaptions/hf_train"
     path_to_coco = "/mnt/datadrive/data/coco2017/"
+    path_to_birds = "/mnt/datadrive/data/birds/bird_images/images"
 
     loader = get_dataset(dataset="conceptual_caption", 
                          batch_size=64, 
