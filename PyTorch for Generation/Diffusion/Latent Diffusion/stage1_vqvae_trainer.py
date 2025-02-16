@@ -417,7 +417,7 @@ while train:
                 with torch.no_grad():
                     reconstructions = model(images_to_plot)["reconstruction"]
 
-                save_generated_images(original_images=pixel_values, 
+                save_generated_images(original_images=images_to_plot, 
                                       generated_image_tensors=reconstructions.detach(), 
                                       path_to_save_folder=training_config["val_image_gen_save_path"], 
                                       step=global_step,
