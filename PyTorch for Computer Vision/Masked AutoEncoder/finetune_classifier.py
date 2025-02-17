@@ -386,7 +386,7 @@ for epoch in range(starting_checkpoint, args.epochs):
                         "learning_rate": scheduler.get_last_lr()[0]}, step=epoch)
     
     ### Checkpoint Model ###
-    if epoch % args.save_checkpoint_interval == 0:
+    if (epoch % args.save_checkpoint_interval == 0) or (epoch == args.epochs-1):
         path_to_checkpoint = os.path.join(path_to_experiment, f"checkpoint_{epoch}")
         accelerator.save_state(output_dir=path_to_checkpoint)
 
