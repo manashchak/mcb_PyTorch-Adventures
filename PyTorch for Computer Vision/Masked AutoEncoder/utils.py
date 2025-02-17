@@ -102,6 +102,3 @@ def patchify(images, image_size=224, num_channels=3, patch_size=16):
     return patched
 
         
-
-
-

@@ -1,0 +1,22 @@
+accelerate launch finetune_classifier.py \
+    --experiment_name "MAE_Imagenet_Finetuning" \
+    --wandb_run_name "finetune_epoch_800" \
+    --path_to_data "/mnt/datadrive/data/ImageNet" \
+    --path_to_pretrained_mae_weights work_dir/MAEPretraining/checkpoint_800\
+    --working_directory "work_dir" \
+    --num_classes 1000 \
+    --epochs 50 \
+    --warmup_epochs 5 \
+    --save_checkpoint_interval 10 \
+    --per_gpu_batch_size 256 \
+    --gradient_accumulation_steps 1 \
+    --learning_rate 0.001 \
+    --weight_decay 0.1 \
+    --random_aug_magnitude 9 \
+    --mixup_alpha 0.2 \
+    --cutmix_alpha 1.0 \
+    --label_smoothing 0.1 \
+    --max_grad_norm 1.0 \
+    --img_size 224 \
+    --num_workers 32 \
+    

@@ -1,5 +1,5 @@
 accelerate launch pretrain_mae.py \
-    --experiment_name "MAE Pretraining" \
+    --experiment_name "MAEPretraining" \
     --wandb_run_name "pretrain_run1" \
     --path_to_data "/mnt/datadrive/data/ImageNet" \
     --working_directory "work_dir" \

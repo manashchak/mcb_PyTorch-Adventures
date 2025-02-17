@@ -325,7 +325,7 @@ class ViTMAEForDownstreamTasks(nn.Module):
                     ### Cleanup Weights we dont need (Remove Backbone) ###
                     backbone_keys = {}
                     for key in state_dict.keys():
-                        
+                
                         if ("decoder" in key) | ("embed2image" in key):
                             continue
 
@@ -342,6 +342,7 @@ class ViTMAEForDownstreamTasks(nn.Module):
 class ViTMAEForImageClassification(ViTMAEForDownstreamTasks):
 
     def __init__(self, config):
+
         super(ViTMAEForImageClassification, self).__init__()
 
         self.config = config
@@ -376,7 +377,7 @@ class ViTMAEForImageClassification(ViTMAEForDownstreamTasks):
 class ViTMAEForSegmentation(ViTMAEForDownstreamTasks):
     def __init__(self, config):
 
-        super(ViTMAEForSegmentation, self).__init__():
+        super(ViTMAEForSegmentation, self).__init__()
 
         self.config = config
 
