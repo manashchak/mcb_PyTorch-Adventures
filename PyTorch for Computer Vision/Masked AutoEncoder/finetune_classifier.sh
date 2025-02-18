@@ -2,7 +2,7 @@ accelerate launch finetune_classifier.py \
     --experiment_name "MAE_Imagenet_Finetuning" \
     --wandb_run_name "finetune_epoch_800" \
     --path_to_data "/mnt/datadrive/data/ImageNet" \
-    --path_to_pretrained_mae_weights work_dir/MAEPretraining/checkpoint_800\
+    --path_to_pretrained_mae_weights work_dir/MAEPretraining/checkpoint_800 \
     --working_directory "work_dir" \
     --num_classes 1000 \
     --epochs 50 \

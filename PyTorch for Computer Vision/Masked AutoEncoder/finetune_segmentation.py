@@ -90,7 +90,8 @@ def train(batch_size=64,
     loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
 
     ### Load Model ###
-    config = MAEConfig(num_segmentation_classes=150)
+    config = MAEConfig(path_to_pretrained_weights="work_dir/MAEPretraining/checkpoint_800/model.safetensors",
+                       num_segmentation_classes=150)
     model = ViTMAEForSegmentation(config)
 
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
@@ -223,6 +224,5 @@ if __name__ == "__main__":
           learning_rate=0.001, 
           num_epochs=150,
           image_size=224,
-          experiment_name="MAE_UperNet",
-          skip_connection=True)
+          experiment_name="MAE_UperNet")
                 
