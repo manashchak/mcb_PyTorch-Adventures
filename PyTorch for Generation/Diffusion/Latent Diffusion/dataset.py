@@ -165,7 +165,7 @@ def get_dataset(dataset,
                                        transform=img_transform, 
                                        nested=True)
         
-    elif dataset == "conceptual_caption":
+    elif dataset == "conceptual_captions":
 
         trainset = conceptual_captions(path_to_data, 
                                        img_transform, 
