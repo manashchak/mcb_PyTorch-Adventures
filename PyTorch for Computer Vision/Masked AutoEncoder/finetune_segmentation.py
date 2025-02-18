@@ -4,8 +4,7 @@ MAE + UperNet
 
 """
 import os
-import random
-from PIL import Image
+import argparse
 import pickle
 import numpy as np
 from tqdm import tqdm
@@ -13,10 +12,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
-from torchvision import transforms
 import torchvision.transforms.functional as TF
-from torch.utils.data import Dataset, DataLoader
-import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader
 from transformers import get_cosine_schedule_with_warmup
 from accelerate import Accelerator
 
@@ -24,8 +21,22 @@ from accelerate import Accelerator
 from segmentation_utils import ADE20KDataset
 from MaskedAutoEncoder import ViTMAEForSegmentation, MAEConfig
 
+
+parser = argparse.ArgumentParser(description="MAE+UperNet Head ADE20K Segmentation")
+
+parser.add_argument("--path_to_data",
+                    help="Root directory for the ADE20K Dataset"
+                    required=True, 
+                    type=str)
+
+parser.add_argument("--path_to_backbone_checkpoint",
+                    help="Path to the directory containing the Pretrained MAE Backbone Weights",
+                    required=True)
+
+args = parser.parse_args()
+
 ### Path to ADE20K Data ###
-path_to_data = "../../data/ADE20K"
+path_to_data = args.path_to_data
 
 ### Define Simple Training Logger ###
 class LocalLogger:
@@ -90,7 +101,7 @@ def train(batch_size=64,
     loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
 
     ### Load Model ###
-    config = MAEConfig(path_to_pretrained_weights="work_dir/MAEPretraining/checkpoint_800/model.safetensors",
+    config = MAEConfig(path_to_pretrained_weights=os.path.join(args.path_to_backbone_checkpoint, "model.safetensors"),
                        num_segmentation_classes=150)
     model = ViTMAEForSegmentation(config)
 
