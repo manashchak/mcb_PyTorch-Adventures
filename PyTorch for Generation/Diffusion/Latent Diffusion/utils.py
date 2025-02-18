@@ -61,6 +61,7 @@ def save_generated_images(original_images,
         os.makedirs(path_to_save_folder)
 
     ### Clamp Output Between [-1 to 1] and rescale back to [0 to 255] ###
+    generated_image_tensors = generated_image_tensors.float()
     generated_image_tensors = torch.clamp(generated_image_tensors, -1., 1.)
     generated_image_tensors = (generated_image_tensors + 1) / 2
     generated_image_tensors = generated_image_tensors.cpu().permute(0,2,3,1).numpy()
@@ -68,6 +69,7 @@ def save_generated_images(original_images,
     gen_imgs = [Image.fromarray(img).convert("RGB") for img in generated_image_tensors]
 
     ### Original Images have been scaled to [-1 to 1], rescale back to [0 to 255] ###
+    original_images = original_images.float()
     original_images = (original_images + 1) / 2
     original_images = original_images.cpu().permute(0,2,3,1).numpy()
     original_images = (255 * original_images).astype(np.uint8)

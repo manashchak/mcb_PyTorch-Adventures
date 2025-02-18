@@ -78,166 +78,37 @@ class GenericImageDataset(Dataset):
 
         return {"images": img}    
 
-class COCODataset(Dataset):
-    def __init__(self, path_to_data, train=True, transforms=None):
-
-        self.path_to_root = path_to_data
-        
-        if train:
-            path_to_annotations = os.path.join(self.path_to_root, "annotations", "captions_train2017.json")
-            self.path_to_images = os.path.join(self.path_to_root, "train2017")
-
-        else:
-            path_to_annotations = os.path.join(self.path_to_root, "annotations", "captions_val2017.json")
-            self.path_to_images = os.path.join(self.path_to_root, "val2017")
+def conceptual_captions_collate_fn(tokenizer_model="openai/clip-vit-large-patch14", return_transcript=True):
+    pass
 
 
-        self._prepare_annotations(path_to_annotations)
-
-        self.image2tensor = transforms
-            
-    def _prepare_annotations(self, path_to_annotations):
-
-        ### Load Annotation Json ###
-        with open(path_to_annotations, "r") as f:
-            annotation_json = json.load(f)
-            
-        ### For Each Image ID Get the Corresponding Annotations ###
-        id_annotations = {}
-    
-        for annot in annotation_json["annotations"]:
-            image_id = annot["image_id"]
-            caption = annot["caption"]
-    
-            if image_id not in id_annotations:
-                id_annotations[image_id] = [caption]
-            else:
-                id_annotations[image_id].append(caption)
-    
-        ### Coorespond Image Id to Filename ###
-        path_id_coorespondance = {}
-    
-        for image in annotation_json["images"]:
-            file_name = image["file_name"]
-            image_id = image["id"]
-        
-            path_id_coorespondance[file_name] = id_annotations[image_id]
-
-        self.filenames = list(path_id_coorespondance.keys())
-        self.annotations = path_id_coorespondance
-
-
-    def __len__(self):
-        return len(self.annotations)
-
-    def __getitem__(self, idx):
-
-        ### Grab Filename and Cooresponding Annotations ###
-        filename = self.filenames[idx]
-        annotation = self.annotations[filename]
-
-        ### If more than 1 annotation, randomly select ###
-        annotation = random.choice(annotation)
-
-        ### Remove Any Whitespace from Text ###
-        annotation = annotation.strip()
-
-        ### Error Handling on any Broken Images ###
-        try:
-            ### Load Image ###
-            path_to_img = os.path.join(self.path_to_images, filename)
-            img = Image.open(path_to_img).convert("RGB")
-
-            ### Apply Image Transforms ###
-            img = self.image2tensor(img)
-            
-            return img, annotation
-
-        except Exception as e:
-            print("Exception:", e)
-            return None, None
-
-def coco_collate_fn(tokenizer_model, return_transcript):
-
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_model)
-
-    def collate_fn(examples):
-        
-        ### Remove any potential Nones ###
-        examples = [i for i in examples if i[0] is not None]
-
-        if len(examples) > 0:
-
-            ### Grab Images and add batch dimension ###
-            images = [i[0].unsqueeze(0) for i in examples]
-
-            ### Grab Text Annotations ###
-            annot = [i[1] for i in examples]
-
-            ### Stick All Images Together along Batch ###
-            images = torch.concatenate(images)
-
-            ### Store Batch as Dictionary ###
-            batch = {"images": images}
-
-            if return_transcript:
-
-                ### Tokenize Annotations with Padding ###
-                annotation = tokenizer(annot, padding=True, return_tensors="pt")
-                batch["context"] = annotation["input_ids"]
-                batch["attention_mask"] = annotation["attention_mask"].bool()
-
-            return batch
-        
-        else:
-            print("Broken Batch!")
-            return None
-        
-    return collate_fn
-
-def imagenet_dataset(path_to_data, transforms=None):
-
-    path_to_train_data = os.path.join(path_to_data, "train")
-
-    dataset = dataset.ImageFolder(path_to_train_data, transform=transforms)
-
-    return dataset
-
-def conceptual_captions(path_to_data, transforms=None):
+def conceptual_captions(path_to_data, transforms, return_caption):
 
     dataset = load_from_disk(path_to_data)
 
-    return dataset
+    def img_transforms(batch):
 
-def conceptual_captions_collate_fn(img_transforms, return_captions=True):
+        transformed_images = [
+            transforms(image) for image in batch["image"]
+        ]
 
-    def collate_fn(batch):
+        batch["images"] = transformed_images
 
-        images, encoded_texts, attn_mask = [], [], []
-        for sample in batch:
-            images.append(img_transforms(sample["image"]))
-
-            encoded_text = torch.tensor(sample["encoded_text"])
-            encoded_texts.append(encoded_text)
-            attn_mask.append(torch.ones(encoded_text.shape[0]))
-
-        images = torch.stack(images)
-        
-        batch = {"images": images}
-
-        if return_captions:
-            encoded_texts = torch.nn.utils.rnn.pad_sequence(encoded_texts, batch_first=True)
-            attn_mask = torch.nn.utils.rnn.pad_sequence(attn_mask, batch_first=True).bool()
-            
-            batch['context'] = encoded_text
-            batch["attention_mask"] = attn_mask
+        batch.pop("image")
 
         return batch
 
-    return collate_fn
+    dataset.set_transform(img_transforms)
+
+    if not return_caption:
+        if "encoded_text" in dataset.column_names["train"]:
+            dataset = dataset.remove_columns("encoded_text")
+        if "caption" in dataset.column_names["train"]:
+            dataset = dataset.remove_columns("caption")
+
+    return dataset
 
 def get_dataset(dataset,
-                batch_size, 
                 path_to_data, 
                 num_channels=3, 
                 img_size=256, 
@@ -245,10 +116,7 @@ def get_dataset(dataset,
                 interpolation="bilinear",
                 random_flip_p=0.5,
                 train=True,
-                return_caption=True,
-                num_workers=8,
-                pin_memory=True,
-                tokenizer_model="openai/clip-vit-large-patch14"):
+                return_caption=True):
     
     img_transform = image_transforms(num_channels=num_channels,
                                      img_size=img_size, 
@@ -261,87 +129,49 @@ def get_dataset(dataset,
         if return_caption:
             raise Exception("CelebA Has No Captions!")
         
-        dataset = GenericImageDataset(path_to_data=path_to_data, 
-                                      transform=img_transform)
-        
-        loader = DataLoader(dataset, 
-                            batch_size=batch_size,
-                            num_workers=num_workers,
-                            pin_memory=pin_memory,
-                            shuffle=True)
-        
-    if dataset == "celebahq":
+        trainset = GenericImageDataset(path_to_data=path_to_data, 
+                                       transform=img_transform)
+         
+    elif dataset == "celebahq":
 
         if return_caption:
             raise Exception("CelebAHQ Has No Captions!")
         
-        dataset = GenericImageDataset(path_to_data=path_to_data, 
-                                      transform=img_transform)
+        trainset = GenericImageDataset(path_to_data=path_to_data, 
+                                       transform=img_transform)
         
-        loader = DataLoader(dataset, 
-                            batch_size=batch_size,
-                            num_workers=num_workers,
-                            pin_memory=pin_memory,
-                            shuffle=True)
+    elif dataset == "ffhd":
+    
+        if return_caption:
+            raise Exception("FFHQ Has No Caption")
+        
+        trainset = GenericImageDataset(path_to_data=path_to_data, 
+                                       transform=img_transform,
+                                       nested=True)
         
     elif dataset == "imagenet": 
         if return_caption:
             raise Exception("Imagenet Has No Captions!")
 
-        dataset = GenericImageDataset(path_to_data=path_to_data, 
-                                      transform=img_transform, 
-                                      nested=True)
-        
-        loader = DataLoader(dataset, 
-                            batch_size=batch_size,
-                            num_workers=num_workers,
-                            pin_memory=pin_memory,
-                            shuffle=True)
+        trainset = GenericImageDataset(path_to_data=path_to_data, 
+                                       transform=img_transform, 
+                                       nested=True)
         
     elif dataset == "birds":
         if return_caption:
             raise Exception("CUB Birds has no captions!")
 
-        dataset = GenericImageDataset(path_to_data=path_to_data, 
-                                      transform=img_transform, 
-                                      nested=True)
-        
-        loader = DataLoader(dataset, 
-                            batch_size=batch_size,
-                            num_workers=num_workers,
-                            pin_memory=pin_memory,
-                            shuffle=True)
-
-    elif dataset == "coco":
-
-        dataset = COCODataset(path_to_data=path_to_data, 
-                              transforms=img_transform)
-        
-        collate_fn = coco_collate_fn(tokenizer_model, 
-                                     return_transcript=return_caption)
-        
-        loader = DataLoader(dataset, 
-                            batch_size=batch_size,
-                            num_workers=num_workers,
-                            pin_memory=pin_memory,
-                            collate_fn=collate_fn,
-                            shuffle=True)
+        trainset = GenericImageDataset(path_to_data=path_to_data, 
+                                       transform=img_transform, 
+                                       nested=True)
         
     elif dataset == "conceptual_caption":
 
-        dataset = conceptual_captions(path_to_data=path_to_data, 
-                                      transforms=img_transform)
+        trainset = conceptual_captions(path_to_data, 
+                                       img_transform, 
+                                       return_caption=return_caption)
 
-        collate_fn = conceptual_captions_collate_fn(img_transforms=img_transform)
-
-        loader = DataLoader(dataset["train"],
-                            batch_size=batch_size, 
-                            num_workers=num_workers,
-                            collate_fn=collate_fn, 
-                            pin_memory=pin_memory,
-                            shuffle=True)
-        
-    return loader
+    return trainset
 
 if __name__ == "__main__":
 
@@ -351,8 +181,8 @@ if __name__ == "__main__":
     path_to_conceptual = "/mnt/datadrive/data/ConceptualCaptions/hf_train"
     path_to_coco = "/mnt/datadrive/data/coco2017/"
     path_to_birds = "/mnt/datadrive/data/birds/bird_images/images"
+    path_to_ffhq = "/mnt/datadrive/data/ffhd/images1024x1024"
 
     loader = get_dataset(dataset="conceptual_caption", 
-                         batch_size=64, 
-                         num_workers=32,
-                         path_to_data=path_to_conceptual)
+                         path_to_data=path_to_conceptual,
+                         return_caption=False)

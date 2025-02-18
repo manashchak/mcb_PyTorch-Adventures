@@ -5,13 +5,14 @@ import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import DataLoader
 from accelerate import Accelerator
 from tqdm import tqdm
 from diffusers.optimization import get_scheduler
 import lpips
 
 from utils import load_val_images, save_generated_images, count_num_params
-from modules import VAE, LDMConfig, PatchGAN, init_weights
+from modules import VQVAE, LDMConfig, PatchGAN, init_weights
 from modules import LPIPS as mylpips
 from dataset import get_dataset
 
@@ -53,6 +54,23 @@ def experiment_config_parser():
                         required=True,
                         type=str, 
                         metavar="training_config")
+    
+    parser.add_argument("--dataset",
+                        help="What dataset do you want to train on?",
+                        choices=("conceptual_captions", "imagenet", "coco", "celeba", "celebahq", "birds", "ffhd"),
+                        required=True,
+                        type=str)
+
+    parser.add_argument("--path_to_dataset",
+                        help="Root directory of dataset",
+                        required=True,
+                        type=str)
+    
+    parser.add_argument("--path_to_save_gens",
+                        help="Folder you want to store the testing generations througout training",
+                        required=True, 
+                        type=str)
+    
 
     args = parser.parse_args()
 
@@ -65,7 +83,7 @@ with open(args.training_config, "r") as f:
     training_config = yaml.safe_load(f)["training_args"]
 
 with open(training_config["vae_config"], "r") as f:
-    vae_config = yaml.safe_load(f)["vae"]
+    vae_config = yaml.safe_load(f)["vqvae"]
     config = LDMConfig(**vae_config)
 
 ### Initialize Accelerator/Tracker ###
@@ -78,7 +96,9 @@ if args.log_wandb:
     accelerator.init_trackers(args.experiment_name, init_kwargs={"wandb": {"name": args.wandb_run_name}})
 
 ### Load Model ###
-model = VAE(config).to(accelerator.device)
+model = VQVAE(config).to(accelerator.device)
+latent_res = (config.img_size // (len(config.vae_channels_per_block)-1)**2)
+accelerator.print(f"LATENT SPACE DIMENSIONS: {config.latent_channels, latent_res, latent_res}")
 
 ### Load LPIPS ###
 use_lpips = False
@@ -127,16 +147,26 @@ if use_disc:
 
 ### Get DataLoader ###
 mini_batchsize = training_config["per_gpu_batch_size"] // training_config["gradient_accumulations_steps"]
-dataloader = get_dataset(batch_size=mini_batchsize,
-                         dataset=training_config["dataset"],
-                         path_to_data=training_config["path_to_data"],
-                         num_channels=vae_config["in_channels"],
-                         img_size=vae_config["img_size"],
-                         random_resize=training_config["random_resize"],
-                         interpolation=training_config["interpolation"],
-                         num_workers=training_config["num_workers"],
-                         pin_memory=training_config["pin_memory"],
-                         return_caption=False)
+dataset = get_dataset(dataset=args.dataset,
+                      path_to_data=args.path_to_dataset,
+                      num_channels=vae_config["in_channels"],
+                      img_size=vae_config["img_size"],
+                      random_resize=training_config["random_resize"],
+                      interpolation=training_config["interpolation"],
+                      return_caption=False)
+
+accelerator.print("Number of Training Samples:", len(dataset))
+
+dataloader = DataLoader(dataset, 
+                        batch_size=mini_batchsize,
+                        pin_memory=training_config["pin_memory"],
+                        num_workers=training_config["num_workers"])
+
+effective_epochs = (training_config["per_gpu_batch_size"] * \
+                        accelerator.num_processes * \
+                            training_config["total_training_iterations"]) // len(dataset)
+
+accelerator.print("Effective Epochs:", effective_epochs)
 
 ### Get Learning Rate Scheduler ###
 lr_scheduler = get_scheduler(
@@ -419,7 +449,7 @@ while train:
 
                 save_generated_images(original_images=images_to_plot, 
                                       generated_image_tensors=reconstructions.detach(), 
-                                      path_to_save_folder=training_config["val_image_gen_save_path"], 
+                                      path_to_save_folder=args.path_to_save_gens, 
                                       step=global_step,
                                       accelerator=accelerator)
                 

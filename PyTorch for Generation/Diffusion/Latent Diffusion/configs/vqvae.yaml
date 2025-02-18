@@ -14,7 +14,7 @@ vqvae:
     - 512
     - 512
   vae_up_down_factor: 2
-  vae_up_down_kerel_size: 3
+  vae_up_down_kernel_size: 3
 
   ### Additional VQ Configs ###
   quantize: True
