@@ -106,7 +106,7 @@ def conceptual_captions(path_to_data, transforms, return_caption):
         if "caption" in dataset.column_names["train"]:
             dataset = dataset.remove_columns("caption")
 
-    return dataset
+    return dataset["train"]
 
 def get_dataset(dataset,
                 path_to_data, 
