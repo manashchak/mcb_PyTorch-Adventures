@@ -54,6 +54,10 @@ parser.add_argument("--dtype",
                     type=str,
                     required=False)
 
+parser.add_argument("--pre_encode_text",
+                    default=False, 
+                    action=argparse.BooleanOptionalAction)
+
 args = parser.parse_args()
 
 if args.dtype == "float32":
@@ -79,9 +83,10 @@ def embed_text(batch, rank):
     try:
 
         captions = tokenizer(batch["caption"], 
-                            padding=True, 
-                            return_tensors="pt",
-                            max_length=512).to(device)
+                             padding=True, 
+                             truncation=True,
+                             return_tensors="pt",
+                             max_length=77).to(device)
 
         with torch.no_grad():
             with torch.autocast(device):
@@ -141,16 +146,18 @@ if __name__ == "__main__":
     dataset = dataset.remove_columns("jpg")
 
     ### Encode All Text ###
-    print(f"Prepping on {torch.cuda.device_count()} GPUs")
-    dataset = dataset.map(embed_text,
-                          batched=True, 
-                          batch_size=args.gpu_batch_size,
-                          with_rank=True, 
-                          num_proc=torch.cuda.device_count())
-    dataset = dataset.remove_columns("caption")
+    if args.pre_encode_text:
 
-    ### Remove Rows that were Unsuccessful ###
-    dataset = dataset.filter(lambda example: example["encoded_text"] is not None, num_proc=args.num_cpu_workers)
+        print(f"Prepping on {torch.cuda.device_count()} GPUs")
+        dataset = dataset.map(embed_text,
+                            batched=True, 
+                            batch_size=args.gpu_batch_size,
+                            with_rank=True, 
+                            num_proc=torch.cuda.device_count())
+        dataset = dataset.remove_columns("caption")
+
+        ### Remove Rows that were Unsuccessful ###
+        dataset = dataset.filter(lambda example: example["encoded_text"] is not None, num_proc=args.num_cpu_workers)
     
     ### Final Dataset ###
     print(dataset)
