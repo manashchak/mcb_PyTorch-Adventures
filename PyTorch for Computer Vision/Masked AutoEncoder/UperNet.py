@@ -46,7 +46,7 @@ class PSPModule(nn.Module):
         for s in bin_sizes:
             self.stages.append(
                 nn.Sequential(
-                    nn.AdaptiveAvgPool1d(s),
+                    nn.AdaptiveAvgPool2d(s),
                     nn.Conv2d(in_channels, 
                               out_channels, 
                               kernel_size=1, 
@@ -195,7 +195,7 @@ class FPN(nn.Module):
         and then sum together to merge features 
         """
 
-        return F.interpolate(x, size=(y.shape[2], y.shape[3]), align_corners=True) + y
+        return F.interpolate(x, size=(y.shape[2], y.shape[3]), mode="bilinear", align_corners=True) + y
 
     def forward(self, features):
 
@@ -203,7 +203,7 @@ class FPN(nn.Module):
         for idx in range(len(features)-1):
         
             ### Grab one of the 3 layers ###
-            conv_layer = self.conv1x1[idx]
+            conv_layer = self.conv_proj[idx]
 
             ### Grab a feature (starting from the second one) ###
             feature = features[idx+1]
@@ -229,7 +229,7 @@ class FPN(nn.Module):
         ### Upsample all Images to Highest resolution (first block) ###
         H, W = pyramid[0].shape[2], pyramid[0].shape[3]
         
-        pyramid[1:] = [F.interpolate(feature, size=(H,W), mode="bilinear") for feature in pyramid[1:]]
+        pyramid[1:] = [F.interpolate(feature, size=(H,W), mode="bilinear", align_corners=True) for feature in pyramid[1:]]
 
         ### Append the Feature ###
         output = self.conv_fusion(torch.cat(pyramid, dim=1))
@@ -330,9 +330,10 @@ class Feature2Pyramid(nn.Module):
         pyramid = []
 
         for features, layer in zip(inputs, self.scales):
-            pyramid.append(layer(features))
+            scaled = layer(features)
+            pyramid.append(scaled)
 
-        return features
+        return pyramid
 
 class UperNetHead(nn.Module):
     
@@ -353,9 +354,9 @@ class UperNetHead(nn.Module):
         feature_channels = config.channels_per_layer
         
         ### Convert Features to Pyramid ###
-        self.feat2pyr = Feature2Pyramid(embed_dim=config.embed_dim, 
+        self.feat2pyr = Feature2Pyramid(embed_dim=config.encoder_embed_dim, 
                                         rescales=config.rescales)
-        
+   
         ### PSP Module Works on the Last Layer ###
         self.psp = PSPModule(in_channels=feature_channels[-1])
         
@@ -365,11 +366,18 @@ class UperNetHead(nn.Module):
 
         ### If FPN return a tensor in the shape of the first feature, 
         ### then the head will take that as the input 
-        self.head = nn.Conv2d(in_channels=feature_channels[0])
+        self.head = nn.Conv2d(in_channels=feature_channels[0],
+                              out_channels=config.num_segmentation_classes,
+                              kernel_size=3,
+                              padding="same")
 
 
     def forward(self, inputs):
-        
+
+        """
+        inputs is a list of tensors (layers 3,5,7,11 from our ViT)
+        """ 
+
         ### Build Pyramid ###
         pyramid = self.feat2pyr(inputs)
 

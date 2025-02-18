@@ -1,6 +1,7 @@
 import os
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import Literal, Tuple
 from VisionTransformer import PatchEmbed, EncoderBlock
 from transformers import ViTMAEModel
@@ -40,9 +41,10 @@ class MAEConfig:
 
     ### Segmentation Head Config ###
     psp_bin_size: Tuple = (1,2,4,6)
-    feature_layers: Tuple = (3,5,7,11)
+    feature_layer_idx: Tuple = (3,5,7,11)
     channels_per_layer: Tuple = (768, 768, 768, 768)
     rescales: Tuple = (4,1,2,0.5)
+    num_segmentation_classes: Tuple = 2
     
     ### MAE Settings ###
     fused_attention: bool = True
@@ -102,7 +104,7 @@ class VITMAEEncoder(nn.Module):
 
         self.encoder_layer_norm = nn.LayerNorm(config.encoder_embed_dim, eps=1e-6)
 
-    def forward(self, x, mask_ratio=0.0):
+    def forward(self, x, mask_ratio=0.0, output_hidden_states=False):
         
         batch_size, channels, height, width = x.shape 
 
@@ -130,13 +132,18 @@ class VITMAEEncoder(nn.Module):
         x = torch.cat((cls_token, x), dim=1)
         
         ### Pass through Transformer Blocks ###
+        hidden_states = []
         for block in self.encoder_blocks:
             x = block(x)
+            hidden_states.append(x)
 
         ### Normalize ###
         x = self.encoder_layer_norm(x)
 
-        return x, mask, restore_idx
+        if output_hidden_states:
+            return x, mask, restore_idx, hidden_states
+        else:
+            return x, mask, restore_idx
 
 class VITMAEDecoder(nn.Module):
 
@@ -356,8 +363,6 @@ class ViTMAEForImageClassification(ViTMAEForDownstreamTasks):
         self.head = nn.Linear(self.encoder.config.hidden_size if self.hf_backbone else config.encoder_embed_dim,
                               config.num_classes)
         
-        self.loss_func = nn.CrossEntropyLoss()
-        
     def forward(self, x):
 
         if self.hf_backbone:
@@ -390,8 +395,42 @@ class ViTMAEForSegmentation(ViTMAEForDownstreamTasks):
         self.upernet = UperNetHead(config)
 
     def forward(self, x):
-        pass
 
+        input_size = (x.shape[2], x.shape[3])
+
+        if self.hf_backbone:
+            hidden_states = self.encoder(x, output_hidden_states=True)["hidden_states"]
+        else:
+            _, _, _, hidden_states = self.encoder(x, output_hidden_states=True)
+
+        selected_hidden_states = []
+        for idx, state in enumerate(hidden_states):
+            if idx in self.config.feature_layer_idx:
+                
+                ### Remove CLS token ###
+                state = state[:, 1:, :]
+
+                ### Get Edge Length ###
+                batch, num_tokens, embed_dim = state.shape
+                edge_length = int(num_tokens**0.5)
+
+                ### Convert State from (B x S x E) -> (B x E x H x W) ###
+                ### where H=W=S**0.5 ###
+                state = state.permute(0,2,1)
+                state = state.permute(0,2,1).reshape(-1, embed_dim, edge_length, edge_length)
+
+                ### Store the Tensor ###
+                selected_hidden_states.append(state)
+
+        ### Pass Through UperNet Head ###
+        output = self.upernet(selected_hidden_states)
+        
+        ### Interpolate Back to Image Space ###
+        output = F.interpolate(output, size=input_size, mode="bilinear")
+
+        return output
+
+        
 def _init_weights_(module: nn.Module):
 
     if isinstance(module, VITMAEEncoder):
@@ -413,7 +452,7 @@ if __name__ == "__main__":
     rand = torch.randn(4,3,224,224)
     mae_config = MAEConfig(pretrained_backbone="pretrained_huggingface", 
                            path_to_pretrained_weights="work_dir/MAE Pretraining/checkpoint_50/model.safetensors")
-    model = ViTMAEForImageClassification(mae_config)
+    model = ViTMAEForSegmentation(mae_config)
     rand = torch.randn(4,3,224,224)
     model(rand)
     
