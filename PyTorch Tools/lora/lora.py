@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import torch
 import torch.nn as nn
@@ -6,6 +7,7 @@ from datasets import load_dataset
 from transformers import RobertaForSequenceClassification, AutoTokenizer
 from transformers import TrainingArguments, Trainer
 import evaluate
+from transformers import TrainerCallback
 
 class LoRALinear(nn.Module):
 
@@ -21,7 +23,6 @@ class LoRALinear(nn.Module):
                  lora_alpha=1, 
                  use_rslora=True, 
                  lora_dropout=0.0,
-                 initializer_range=1.0, 
                  b_grad=True):
         
         super().__init__()
@@ -41,18 +42,21 @@ class LoRALinear(nn.Module):
         out_features, in_features = self.W.shape
 
         ### Create our Low Rank Matricies ###
-        self.lora_A = nn.Parameter(torch.zeros(in_features, rank))
-        self.lora_B = nn.Parameter(torch.zeros(rank, out_features))
+        self.lora_A = nn.Parameter(torch.zeros(in_features, rank), requires_grad=True)
+        self.lora_B = nn.Parameter(torch.zeros(rank, out_features), requires_grad=True)
 
         ### Initialize lora_A w/ gaussian, B stays as 0s (as described in paper) ###
-        nn.init.normal_(self.lora_A, std=initializer_range)
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
 
         ### Create LoRA Dropout ###
-        self.lora_dropout = nn.Dropout(lora_dropout) if lora_dropout > 0 else nn.Identity()
+        self.lora_dropout = nn.Dropout(lora_dropout) if lora_dropout > 0 else lambda x: x
 
         ### Compute Scaling for LoRA ###
         self.scaling = self.lora_alpha / self.rank**0.5 if use_rslora else self.lora_alpha / self.rank
 
+    def __repr__(self):
+        return f"LoRALinear(in_features={self.W.shape[1]}, out_features={self.W.shape[1]}, rank={self.rank})"
+    
     def forward(self, x):
 
         ### Output W/ Original Weights (No Gradients) ###
@@ -83,7 +87,6 @@ class LoRAEmbedding(nn.Module):
                  rank=8, 
                  lora_alpha=1, 
                  use_rslora=True, 
-                 initializer_range=1.0,
                  padding_idx=None):
         
         super().__init__()
@@ -102,15 +105,18 @@ class LoRAEmbedding(nn.Module):
         num_embeddings, embedding_dim = self.W.shape
 
         ### Create our Low Rank Matricies ###
-        self.lora_A = nn.Parameter(torch.zeros(num_embeddings, rank))
-        self.lora_B = nn.Parameter(torch.zeros(rank, embedding_dim))
+        self.lora_A = nn.Parameter(torch.zeros(num_embeddings, rank), requires_grad=True)
+        self.lora_B = nn.Parameter(torch.zeros(rank, embedding_dim), requires_grad=True)
 
-        ### Initialize lora_A w/ gaussian, B stays as 0s (as described in paper) ###
-        nn.init.normal_(self.lora_A, std=initializer_range)
+        ### Different than the paper but matches implementation ###
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
 
         ### Compute Scaling for LoRA ###
         self.scaling = self.lora_alpha / self.rank**0.5 if use_rslora else self.lora_alpha / self.rank
-
+    
+    def __repr__(self):
+        return f"LoRAEmbedding({self.W.shape[0]}, {self.W.shape[1]}, rank={self.rank})"
+    
     def forward(self, x):
 
         ### Output W/ Original Weights (No Gradients) ###
@@ -124,7 +130,7 @@ class LoRAEmbedding(nn.Module):
     
         ### Sum Outputs ###
         output = orig_output + low_rank_output
-
+        
         return output
     
 
@@ -172,10 +178,11 @@ class LoRAModel(nn.Module):
         for name, child in module.named_children():
             
             ### If our name is in our target modules and the target modules was not None we convert ###            
-            if (name in self.target_modules) and (self.target_modules is not None):
-                convert_to_lora = True
-            else:
-                convert_to_lora = False
+            if (self.target_modules is not None): 
+                if (name in self.target_modules):
+                    convert_to_lora = True
+                else:
+                    convert_to_lora = False
                 
             ### If a child of this module is a linear layer, update with our LoRALinear ###
             if isinstance(child, nn.Linear):
@@ -189,7 +196,6 @@ class LoRAModel(nn.Module):
                                             lora_alpha=self.lora_alpha, 
                                             use_rslora=self.use_rslora, 
                                             lora_dropout=self.lora_dropout,
-                                            initializer_range=self.initializer_range, 
                                             b_grad=self.b_grad)
                     
                     ### Replace the linear layer (identified by its name) in this module with our lora layer ###
@@ -201,11 +207,10 @@ class LoRAModel(nn.Module):
                 if convert_to_lora:
 
                     lora_layer = LoRAEmbedding(child.weight, 
-                                            rank=self.rank, 
-                                            lora_alpha=self.lora_alpha, 
-                                            use_rslora=self.use_rslora, 
-                                            initializer_range=self.initializer_range,
-                                            padding_idx=child.padding_idx)
+                                               rank=self.rank, 
+                                               lora_alpha=self.lora_alpha, 
+                                               use_rslora=self.use_rslora, 
+                                               padding_idx=child.padding_idx)
                     
                     ### Replace the embedding layer (identified by its name) in this module with our lora layer ###
                     setattr(module, name, lora_layer)
@@ -226,3 +231,53 @@ class LoRAModel(nn.Module):
     
     def forward(self, *inputs, **kwargs):
         return self.model(*inputs, **kwargs)
+
+if __name__ == "__main__":
+
+    ### Load Model ###
+    model = RobertaForSequenceClassification.from_pretrained("FacebookAI/roberta-base", num_labels=5)
+
+    ### Convert Roberta Backbone with LoRA (ignoring classifier) ###
+    target_modules = ["query", "key", "value", "dense", "word_embeddings", "position_embeddings"]
+    model.roberta = LoRAModel(model.roberta, rank=16, lora_alpha=16, target_modules=target_modules)
+    print(model)
+
+    ### Prepare Dataset/DataLoader ###
+    dataset = load_dataset("yelp_review_full")
+    tokenizer = AutoTokenizer.from_pretrained("FacebookAI/roberta-base")
+
+    def tokenize_function(examples):
+        return tokenizer(examples["text"], padding="max_length", truncation=True)
+
+    tokenized_datasets = dataset.map(tokenize_function, batched=True)
+    small_train_dataset = tokenized_datasets["train"].shuffle(seed=42).select(range(5000))
+    small_eval_dataset = tokenized_datasets["test"].shuffle(seed=42).select(range(5000))
+
+    ### Set Up Training ###
+    training_args = TrainingArguments(output_dir="work_dir",
+                                      eval_strategy="steps",
+                                      eval_steps=25,
+                                      per_device_train_batch_size=64,
+                                      per_device_eval_batch_size=64,
+                                      num_train_epochs=5, 
+                                      warmup_ratio=0.05, 
+                                      bf16=True,
+                                      dataloader_num_workers=32,
+                                      report_to="none")
+
+    metric = evaluate.load("accuracy")
+
+    def compute_metrics(eval_pred):
+        logits, labels = eval_pred
+        predictions = np.argmax(logits, axis=-1)
+        return metric.compute(predictions=predictions, references=labels)
+
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=small_train_dataset,
+        eval_dataset=small_eval_dataset,
+        compute_metrics=compute_metrics
+    )
+
+    trainer.train()
