@@ -22,12 +22,14 @@ warnings.filterwarnings("ignore")
 experiment_name = "LoRAImageClassifier"
 wandb_run_name = "vit_lora_classifier"
 working_directory = "work_dir"
-epochs = 5
+epochs = 1
 batch_size = 64
 learning_rate = 0.0005
 weight_decay = 0.001
 max_grad_norm = 1.0
-num_workers = 4
+num_workers = 32
+gradient_checkpointing = False
+log_wandb = False
 hf_dataset = "food101"
 hf_model_name = "google/vit-base-patch16-224"
 
@@ -49,8 +51,9 @@ if not os.path.isdir(path_to_experiment):
     os.mkdir(path_to_experiment)
 
 accelerator = Accelerator(project_dir=path_to_experiment,
-                          log_with="wandb")
-accelerator.init_trackers(experiment_name, init_kwargs={"wandb": {"name": wandb_run_name}})
+                          log_with="wandb" if log_wandb else None)
+if log_wandb:
+    accelerator.init_trackers(experiment_name, init_kwargs={"wandb": {"name": wandb_run_name}})
 
 ###########################
 ### Prepare DataLoaders ###
@@ -74,16 +77,25 @@ testloader = DataLoader(dataset["validation"], batch_size=batch_size, collate_fn
 #######################
 ### Load LoRA Model ###
 #######################
+
 model = AutoModelForImageClassification.from_pretrained(hf_model_name, 
                                                         num_labels=len(labels), 
                                                         ignore_mismatched_sizes=True)
+if gradient_checkpointing:
+    model.gradient_checkpointing_enable()
+    
+precision_dict = {"fp32": torch.float32, 
+                "fp16": torch.float16, 
+                "bf16": torch.bfloat16}
+
 lora_model = LoRAModel(model=model, 
                        rank=rank, 
                        lora_alpha=lora_alpha, 
                        use_rslora=use_rslora, 
                        target_modules=target_modules,
                        exclude_modules=exclude_modules,
-                       lora_dropout=lora_dropout)
+                       lora_dropout=lora_dropout,
+                       ora_dtype=precision_dict[accelerator.mixed_precision])
 
 ###############################
 ### Define Training Metrics ###
@@ -94,7 +106,7 @@ accuracy_fn = Accuracy(task="multiclass", num_classes=len(labels)).to(accelerato
 ########################
 ### Define Optimizer ###
 ########################
-params_to_train = filter(lambda p: p.requires_grad, model.parameters())
+params_to_train = filter(lambda p: p.requires_grad, lora_model.parameters())
 optimizer = torch.optim.AdamW(params_to_train, lr=learning_rate, weight_decay=weight_decay)
 
 ##########################
@@ -195,7 +207,8 @@ for epoch in range(epochs):
 
 ### Save Final Model ###
 accelerator.wait_for_everyone()
-lora_model.save_model(os.path.join(working_directory, experiment_name, "food_adapter_checkpoint.safetensors"))
+accelerator.unwrap_model(lora_model).save_model(os.path.join(working_directory, experiment_name, "food_adapter_checkpoint.safetensors"))
+accelerator.unwrap_model(lora_model).save_model(os.path.join(working_directory, experiment_name, "full_food_checkpoint.safetensors"), merge_weights=True)
 
 ### End Training for Trackers to Exit ###
 accelerator.end_training()

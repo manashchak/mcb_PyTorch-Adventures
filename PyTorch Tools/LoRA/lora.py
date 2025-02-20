@@ -3,74 +3,88 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from safetensors.torch import save_file
-from safetensors.torch import load_file
+from safetensors.torch import save_file, load_file
 
 class LoRALinear(nn.Module):
 
-    """
-    This is a basic implementation of the paper LoRA
-    https://arxiv.org/pdf/2106.0968
-
-    """
     def __init__(self, 
                  layer, 
                  rank=8, 
                  lora_alpha=1, 
                  use_rslora=True, 
                  lora_dropout=0.0,
-                 b_grad=True):
+                 b_grad=True, 
+                 lora_dtype=torch.float32):
         
         super().__init__()
-        
+
         assert isinstance(layer, nn.Linear), "LoRALinear Only Converts nn.Linear Layers"
         self.rank = rank 
         self.lora_alpha = lora_alpha
+        self.lora_dtype = lora_dtype
 
-        ### Store Existing Layer ###
+        # Cast Weights to LoRA Dtype
+        layer.weight = nn.Parameter(layer.weight.data.to(self.lora_dtype), requires_grad=False)
+        if layer.bias is not None:
+            layer.bias = nn.Parameter(layer.bias.data.to(self.lora_dtype), requires_grad=b_grad)
+
+        # Store Original Layer
         self.orig_layer = layer
         self.weight = layer.weight
         self.bias = layer.bias
 
-        ### Change Gradient Flag ###
-        self.orig_layer.weight.requires_grad = False
-        if self.orig_layer.bias is not None:
-            self.orig_layer.bias.requires_grad = b_grad
+        # Get In/Out Features
+        self.out_features, self.in_features = self.orig_layer.weight.shape
 
-        ### Get In/Out Features (PyTorch Weight Matrix goes Out/In) ###
-        out_features, in_features = self.orig_layer.weight.shape
+        # Create Low-Rank Matrices
+        self.lora_A = nn.Parameter(torch.zeros(self.in_features, rank, dtype=lora_dtype), requires_grad=True)
+        self.lora_B = nn.Parameter(torch.zeros(rank, self.out_features, dtype=lora_dtype), requires_grad=True)
 
-        ### Create our Low Rank Matricies ###
-        self.lora_A = nn.Parameter(torch.zeros(in_features, rank), requires_grad=True)
-        self.lora_B = nn.Parameter(torch.zeros(rank, out_features), requires_grad=True)
-
-        ### Initialize lora_A w/ gaussian, B stays as 0s (as described in paper) ###
+        # Initialize lora_A with Gaussian, B stays as 0s
         nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
 
-        ### Create LoRA Dropout ###
+        # Create LoRA Dropout
         self.lora_dropout = nn.Dropout(lora_dropout) if lora_dropout > 0 else lambda x: x
 
-        ### Compute Scaling for LoRA ###
+        # Compute Scaling for LoRA
         self.scaling = self.lora_alpha / self.rank**0.5 if use_rslora else self.lora_alpha / self.rank
 
     def __repr__(self):
-        return f"LoRALinear(in_features={self.weight.shape[1]}, out_features={self.weight.shape[1]}, rank={self.rank})"
+        return f"LoRALinear(in_features={self.in_features}, out_features={self.out_features}, rank={self.rank})"
     
+    def _merge_weights(self):
+        """
+        xW^T + xAB = x(W^T + AB)
+        """
+        merged_weight = self.orig_layer.weight.data + (self.lora_A @ self.lora_B).T * self.scaling
+
+        merged_layer = nn.Linear(
+            self.orig_layer.weight.shape[1],
+            self.orig_layer.weight.shape[0],
+            bias=True if self.bias is not None else False
+        )
+
+        merged_layer.weight.data = merged_weight
+
+        if self.bias is not None:
+            merged_layer.bias.data = self.bias
+
+        return merged_layer
+
     def forward(self, x):
 
-        ### Output W/ Original Weights (No Gradients) ###
+        # Cast x to LoRA dtype
+        x = x.to(self.lora_dtype)
+
+        # Output with original weights (no gradients)
         orig_output = self.orig_layer(x)
 
-        ### Low Rank Output (With Gradients) ###
-        low_rank_output = ((self.lora_dropout(x) @ self.lora_A) @ self.lora_B) * self.scaling
+        # Low-rank output (with gradients)
+        lora_mult = (self.lora_A @ self.lora_B) * self.scaling  # Shape: (in_features, out_features)
+        low_rank_output = x @ lora_mult  # Shape: (batch_size, out_features)
 
-        ### Sum Outputs ###
+        # Sum outputs
         output = orig_output + low_rank_output
-
-        ### Add Bias (if its there) ###
-        if self.bias is not None:
-
-            output = output + self.bias
 
         return output
     
@@ -104,11 +118,11 @@ class LoRAEmbedding(nn.Module):
         self.orig_embed.weight.requires_grad = False
 
         ### Get In/Out Features (PyTorch Weight Matrix goes Out/In) ###
-        num_embeddings, embedding_dim = self.orig_embed.weight.shape
+        self.num_embeddings, self.embedding_dim = self.orig_embed.weight.shape
 
         ### Create our Low Rank Matricies ###
-        self.lora_A = nn.Parameter(torch.zeros(num_embeddings, rank), requires_grad=True)
-        self.lora_B = nn.Parameter(torch.zeros(rank, embedding_dim), requires_grad=True)
+        self.lora_A = nn.Parameter(torch.zeros(self.num_embeddings, rank), requires_grad=True)
+        self.lora_B = nn.Parameter(torch.zeros(rank, self.embedding_dim), requires_grad=True)
 
         ### Different than the paper but matches implementation ###
         nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
@@ -117,8 +131,21 @@ class LoRAEmbedding(nn.Module):
         self.scaling = self.lora_alpha / self.rank**0.5 if use_rslora else self.lora_alpha / self.rank
     
     def __repr__(self):
-        return f"LoRAEmbedding({self.weight.shape[0]}, {self.weight.shape[1]}, rank={self.rank})"
+        return f"LoRAEmbedding({self.num_embeddings}, {self.embedding_dim}, rank={self.rank})"
     
+    def _merge_weights(self):
+        """
+        xW^T + xAB = x(W^T + AB)
+        """
+        merged_weight = self.orig_embed.weight.data + (self.lora_A @ self.lora_B) * self.scaling
+
+        merged_layer = nn.Embeddiong(self.num_embeddings, self.embedding_dim)
+
+        merged_layer.weight.data = merged_weight
+
+        return merged_layer
+        
+
     def forward(self, x):
 
         ### Output W/ Original Weights (No Gradients) ###
@@ -144,14 +171,12 @@ class LoRAConv2d(nn.Module):
     """
     def __init__(self, 
                  layer,
-                 kernel_size, 
-                 stride,
-                 padding,
                  rank=8, 
                  lora_alpha=1, 
                  use_rslora=True, 
                  lora_dropout=0.0,
-                 b_grad=True):
+                 b_grad=True,
+                 lora_dtype=torch.float32):
         
         super().__init__()
 
@@ -159,26 +184,26 @@ class LoRAConv2d(nn.Module):
 
         self.rank = rank 
         self.lora_alpha = lora_alpha
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.padding = padding
+        self.kernel_size = layer.kernel_size
+        self.stride = layer.stride
+        self.padding = layer.padding
+        self.lora_dtype = lora_dtype
 
-        ### These Are Our Pretrained Parameters ###
+        ### Cast Weights to LoRA Dtype ###
+        layer.weight = nn.Parameter(layer.weight.to(self.lora_dtype), requires_grad=False)
+        layer.bias = nn.Parameter(layer.bias.to(self.lora_dtype), requires_grad=b_grad)
+
+        ### Store the Layer ###
         self.orig_conv = layer
         self.weight = layer.weight
         self.bias = layer.bias
 
-        ### Change Gradient Flag ###
-        self.orig_conv.weight.requires_grad = False
-        if self.orig_conv.bias is not None:
-            self.orig_conv.bias.requires_grad = b_grad
-
         ### Convolution Weight Shape ###
-        out_channels, in_channels, kernel_height, kernel_width = self.orig_conv.weight.shape
+        self.out_channels, self.in_channels, self.kernel_height, self.kernel_width = self.orig_conv.weight.shape
 
         ### Create our Low Rank Matricies (Flatten kernel weights and output rank) ###
-        self.lora_A = nn.Parameter(torch.zeros(rank, in_channels, kernel_height, kernel_width), requires_grad=True)
-        self.lora_B = nn.Parameter(torch.zeros(rank, out_channels), requires_grad=True)
+        self.lora_A = nn.Parameter(torch.zeros(rank, self.in_channels, self.kernel_height, self.kernel_width, dtype=lora_dtype), requires_grad=True)
+        self.lora_B = nn.Parameter(torch.zeros(rank, self.out_channels, dtype=lora_dtype), requires_grad=True)
 
         ### Initialize lora_A w/ gaussian, B stays as 0s (as described in paper) ###
         nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
@@ -192,7 +217,41 @@ class LoRAConv2d(nn.Module):
     def __repr__(self):
         return f"LoRAConv2D(in_channels={self.weight.shape[1]}, out_channels={self.weight.shape[0]}, rank={self.rank}, kernel_size={self.kernel_size})"
     
+    def _merge_weights(self):
+        """
+        xW^T + xAB = x(W^T + AB)
+        """
+        ### (rank x in_chan x k_h, k_w) -> (rank x in_chan*k_h*k_w) ###    
+        lora_A_flatten = self.lora_A.flatten(1)
+
+        ### Matmul with lora_B Transposed (lora_B is rank x out_channels) -> (out_channels x rank) ###
+        lora_mult = (self.lora_B.T @ lora_A_flatten) * self.scaling
+        
+        ### Place Back into Conv Weight Shape: (ou_chan x in_chan*k_h*k_w) -> (out_chan x in_chan x k_h x k_w) ###
+        lora_mult = lora_mult.reshape(self.out_channels, self.in_channels, self.kernel_height, self.kernel_width)
+
+        ### Merge ###
+        merged_weight = self.orig_conv.weight.data + lora_mult
+
+        merged_layer = nn.Conv2d(
+            in_channels=self.in_channels,
+            out_channels=self.out_channels, 
+            kernel_size=(self.kernel_height, self.kernel_width),
+            stride=self.stride, 
+            padding=self.padding
+        )
+
+        merged_layer.weight.data = merged_weight
+
+        if self.bias is not None:
+            merged_layer.bias.data = self.bias
+
+        return merged_layer
+
     def forward(self, x):
+        
+        ### Cast x to LoRA Dtype ###
+        x = x.to(self.lora_dtype)
 
         ### Output W/ Original Weights (No Gradients) ###
         orig_output = self.orig_conv(x)
@@ -228,8 +287,10 @@ class LoRAModel(nn.Module):
                  target_modules=None,
                  exclude_modules=None,
                  lora_dropout=0.0,
+                 freeze_non_lora=True,
                  initializer_range=1.0,
-                 b_grad=True):
+                 b_grad=True,
+                 lora_dtype=torch.float32):
         
         super().__init__()
         
@@ -240,8 +301,20 @@ class LoRAModel(nn.Module):
         self.lora_dropout = lora_dropout
         self.initializer_range = initializer_range
         self.b_grad = b_grad
-        self.target_modules = target_modules if isinstance(target_modules, list) else [target_modules]
-        self.exclude_modules = exclude_modules if isinstance(exclude_modules, list) else [exclude_modules]
+        self.lora_dtype = lora_dtype
+        self.freeze_non_lora = freeze_non_lora
+        self.target_modules = target_modules
+        self.exclude_modules = exclude_modules
+
+        if self.target_modules is not None:
+            assert isinstance(self.target_modules, list), "Make sure you pass in target modules as a list!"
+        else:
+            self.target_modules = []
+
+        if self.exclude_modules is not None:
+            assert isinstance(self.exclude_modules, list), "Make sure you pass in exclude modules as a list!"
+        else:
+            self.exclude_modules = []
 
         ### Compute Number of Trainable Parameters Before LoRA ###
         before_params = self._compute_trainable_parameters()
@@ -255,21 +328,23 @@ class LoRAModel(nn.Module):
         print(f"Initial Parameters : {before_params} || LoRA Parameters : {after_params} || Trainable Proportion : {round(after_params*100/before_params, 2)}%")
 
     def _apply_lora(self, module):
-        
-        ### If no target module specified, apply to all linear/embedding layers ###
-        if self.target_modules is None:
-            convert_to_lora = True
-
+    
         ### Recursively Go Through Model and Find Linear Layers ###
         for name, child in module.named_children():
             
-            ### If our name is in our target modules and the target modules was not None we convert ###            
-            if (self.target_modules is not None): 
+            ### If name is in exclude_modules, dont do anything. Dont convert to LoRA and dont change requires_grad ###      
+            if name in self.exclude_modules:  
+                convert_to_lora = False
+                exclude_from_changes = True
+
+            else:
+
+                exclude_from_changes = False
                 if (name in self.target_modules):
                     convert_to_lora = True
                 else:
                     convert_to_lora = False
-                
+       
             ### If a child of this module is a linear layer, update with our LoRALinear ###
             if isinstance(child, nn.Linear):
                 
@@ -281,10 +356,18 @@ class LoRAModel(nn.Module):
                                             lora_alpha=self.lora_alpha, 
                                             use_rslora=self.use_rslora, 
                                             lora_dropout=self.lora_dropout,
-                                            b_grad=self.b_grad)
+                                            b_grad=self.b_grad,
+                                            lora_dtype=self.lora_dtype)
                     
                     ### Replace the linear layer (identified by its name) in this module with our lora layer ###
                     setattr(module, name, lora_layer)
+                
+                ### If this is a module we can change (exlude_from_change flag) and we want to freeze all non-lora params (freeze_non_lora flag) ##
+                ### then we can do that here! ###
+                elif not exclude_from_changes and self.freeze_non_lora:
+
+                    child.weight.requires_grad = False
+                    child.bias.requires_grad = False
 
             ### If its an Embedding Layer then We Can Replace With Our Own LoraEmbedding ###
             elif isinstance(child, nn.Embedding):
@@ -300,36 +383,68 @@ class LoRAModel(nn.Module):
                     ### Replace the embedding layer (identified by its name) in this module with our lora layer ###
                     setattr(module, name, lora_layer)
 
+                elif not exclude_from_changes and self.freeze_non_lora:
+
+                    child.weight.requires_grad = False
+
             elif isinstance(child, nn.Conv2d):
 
                 if convert_to_lora:
 
                     lora_layer = LoRAConv2d(layer=child,
-                                            kernel_size=child.kernel_size, 
-                                            stride=child.stride, 
-                                            padding=child.padding, 
                                             rank=self.rank, 
                                             lora_alpha=self.lora_alpha, 
                                             use_rslora=self.use_rslora, 
                                             lora_dropout=self.lora_dropout, 
-                                            b_grad=self.b_grad)
+                                            b_grad=self.b_grad,
+                                            lora_dtype=self.lora_dtype)
                     
                     setattr(module, name, lora_layer)
+
+                elif not exclude_from_changes and self.freeze_non_lora:
+
+                    child.weight.requires_grad = False
+                    child.bias.requires_grad = False
+
 
             ### Else, Dig Deeper Into the Module To Search For Linear Layers (as long as module wasnt selected to be exluded) ###
             else:
                 
                 dig_deeper = True
-                if (self.exclude_modules is not None) and (name in self.exclude_modules):
+                if name in self.exclude_modules:
                     dig_deeper = False
 
                 if dig_deeper:                    
                     self._apply_lora(child)
 
-    def save_model(self, path, save_trainable_only=True):
+    def _merge_weights(self, module):
+
+        for name, child in module.named_children():
+            
+            if isinstance(child, (LoRALinear, LoRAEmbedding, LoRAConv2d)):
+                
+                ### Compute Merged Layer ###
+                merged_layer = child._merge_weights()
+                
+                ### Replace LoRA Layer with Merged Layer ###
+                setattr(module, name, merged_layer)
+
+            ### Continue Recursively Going through Model ###
+            else:
+
+                self._merge_weights(child)
+
+    def save_model(self, path, save_trainable_only=True, merge_weights=False):
         
-        state_dict = {name: param for name, param in self.named_parameters() \
-                      if (param.requires_grad and save_trainable_only)}
+        if not merge_weights:
+            state_dict = {name: param for name, param in self.named_parameters() \
+                        if (param.requires_grad and save_trainable_only)}
+
+        else:
+
+            self._merge_weights(self.model)
+
+            state_dict = {name: param for name, param in self.named_parameters()}
 
         save_file(state_dict, path)
         
@@ -349,4 +464,3 @@ class LoRAModel(nn.Module):
     
     def forward(self, *inputs, **kwargs):
         return self.model(*inputs, **kwargs)
-    
