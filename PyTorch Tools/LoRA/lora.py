@@ -14,8 +14,7 @@ class LoRALinear(nn.Module):
 
     """
     def __init__(self, 
-                 weight, 
-                 bias, 
+                 layer, 
                  rank=8, 
                  lora_alpha=1, 
                  use_rslora=True, 
@@ -24,20 +23,22 @@ class LoRALinear(nn.Module):
         
         super().__init__()
         
+        assert isinstance(layer, nn.Linear), "LoRALinear Only Converts nn.Linear Layers"
         self.rank = rank 
         self.lora_alpha = lora_alpha
 
-        ### These Are Our Pretrained Parameters ###
-        self.weight = weight
-        self.bias = bias
+        ### Store Existing Layer ###
+        self.orig_layer = layer
+        self.weight = layer.weight
+        self.bias = layer.bias
 
         ### Change Gradient Flag ###
-        self.weight.requires_grad = False
-        if bias is not None:
-            self.bias.requires_grad = b_grad
+        self.orig_layer.weight.requires_grad = False
+        if self.orig_layer.bias is not None:
+            self.orig_layer.bias.requires_grad = b_grad
 
         ### Get In/Out Features (PyTorch Weight Matrix goes Out/In) ###
-        out_features, in_features = self.weight.shape
+        out_features, in_features = self.orig_layer.weight.shape
 
         ### Create our Low Rank Matricies ###
         self.lora_A = nn.Parameter(torch.zeros(in_features, rank), requires_grad=True)
@@ -58,7 +59,7 @@ class LoRALinear(nn.Module):
     def forward(self, x):
 
         ### Output W/ Original Weights (No Gradients) ###
-        orig_output = x @ self.weight.T
+        orig_output = self.orig_layer(x)
 
         ### Low Rank Output (With Gradients) ###
         low_rank_output = ((self.lora_dropout(x) @ self.lora_A) @ self.lora_B) * self.scaling
@@ -81,7 +82,7 @@ class LoRAEmbedding(nn.Module):
 
     """
     def __init__(self, 
-                 weight, 
+                 layer, 
                  rank=8, 
                  lora_alpha=1, 
                  use_rslora=True, 
@@ -89,18 +90,21 @@ class LoRAEmbedding(nn.Module):
         
         super().__init__()
         
+        assert isinstance(layer, nn.Embedding), "LoRAEmbedding only works with nn.Embedding"
+
         self.rank = rank 
         self.lora_alpha = lora_alpha
         self.padding_idx = padding_idx
 
         ### These Are Our Pretrained Parameters ###
-        self.weight = weight
+        self.orig_embed = layer
+        self.weight = layer.weight
 
         ### Change Gradient Flag ###
-        self.weight.requires_grad = False
+        self.orig_embed.weight.requires_grad = False
 
         ### Get In/Out Features (PyTorch Weight Matrix goes Out/In) ###
-        num_embeddings, embedding_dim = self.W.shape
+        num_embeddings, embedding_dim = self.orig_embed.weight.shape
 
         ### Create our Low Rank Matricies ###
         self.lora_A = nn.Parameter(torch.zeros(num_embeddings, rank), requires_grad=True)
@@ -118,7 +122,7 @@ class LoRAEmbedding(nn.Module):
     def forward(self, x):
 
         ### Output W/ Original Weights (No Gradients) ###
-        orig_output = F.embedding(x, self.weight, padding_idx=self.padding_idx)
+        orig_output = self.orig_embed(x)
 
         ### Embed with Low Rank A Embedding Matrix ###
         low_rank_A_output = F.embedding(x, self.lora_A)
@@ -139,8 +143,7 @@ class LoRAConv2d(nn.Module):
 
     """
     def __init__(self, 
-                 weight, 
-                 bias, 
+                 layer,
                  kernel_size, 
                  stride,
                  padding,
@@ -151,7 +154,9 @@ class LoRAConv2d(nn.Module):
                  b_grad=True):
         
         super().__init__()
-        
+
+        assert isinstance(layer, nn.Conv2d), "LoRAConv2d only works with nn.Conv2d" 
+
         self.rank = rank 
         self.lora_alpha = lora_alpha
         self.kernel_size = kernel_size
@@ -159,16 +164,17 @@ class LoRAConv2d(nn.Module):
         self.padding = padding
 
         ### These Are Our Pretrained Parameters ###
-        self.weight = weight
-        self.bias = bias
+        self.orig_conv = layer
+        self.weight = layer.weight
+        self.bias = layer.bias
 
         ### Change Gradient Flag ###
-        self.weight.requires_grad = False
-        if bias is not None:
-            self.bias.requires_grad = b_grad
+        self.orig_conv.weight.requires_grad = False
+        if self.orig_conv.bias is not None:
+            self.orig_conv.bias.requires_grad = b_grad
 
         ### Convolution Weight Shape ###
-        out_channels, in_channels, kernel_height, kernel_width = self.weight.shape
+        out_channels, in_channels, kernel_height, kernel_width = self.orig_conv.weight.shape
 
         ### Create our Low Rank Matricies (Flatten kernel weights and output rank) ###
         self.lora_A = nn.Parameter(torch.zeros(rank, in_channels, kernel_height, kernel_width), requires_grad=True)
@@ -189,11 +195,7 @@ class LoRAConv2d(nn.Module):
     def forward(self, x):
 
         ### Output W/ Original Weights (No Gradients) ###
-        orig_output = F.conv2d(input=x, 
-                               weight=self.weight, 
-                               bias=self.bias, 
-                               stride=self.stride, 
-                               padding=self.padding)
+        orig_output = self.orig_conv(x)
         
         ### Low Rank Output (With Gradients) ###
         lora_rank_A_output = F.conv2d(input=x, 
@@ -274,8 +276,7 @@ class LoRAModel(nn.Module):
                 if convert_to_lora:
 
                     ### Create LoRA Layer for This Linear Layer ###
-                    lora_layer = LoRALinear(weight=child.weight, 
-                                            bias=child.bias, 
+                    lora_layer = LoRALinear(layer=child,
                                             rank=self.rank,
                                             lora_alpha=self.lora_alpha, 
                                             use_rslora=self.use_rslora, 
@@ -290,7 +291,7 @@ class LoRAModel(nn.Module):
                 
                 if convert_to_lora:
 
-                    lora_layer = LoRAEmbedding(child.weight, 
+                    lora_layer = LoRAEmbedding(layer=child, 
                                                rank=self.rank, 
                                                lora_alpha=self.lora_alpha, 
                                                use_rslora=self.use_rslora, 
@@ -303,8 +304,7 @@ class LoRAModel(nn.Module):
 
                 if convert_to_lora:
 
-                    lora_layer = LoRAConv2d(child.weight, 
-                                            child.bias, 
+                    lora_layer = LoRAConv2d(layer=child,
                                             kernel_size=child.kernel_size, 
                                             stride=child.stride, 
                                             padding=child.padding, 
