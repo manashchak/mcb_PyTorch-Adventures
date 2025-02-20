@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from safetensors.torch import save_file
-from safetensors.torch import load_model
+from safetensors.torch import load_file
 
 class LoRALinear(nn.Module):
 
@@ -238,8 +238,8 @@ class LoRAModel(nn.Module):
         self.lora_dropout = lora_dropout
         self.initializer_range = initializer_range
         self.b_grad = b_grad
-        self.target_modules = target_modules
-        self.exclude_modules = exclude_modules
+        self.target_modules = target_modules if isinstance(target_modules, list) else [target_modules]
+        self.exclude_modules = exclude_modules if isinstance(exclude_modules, list) else [exclude_modules]
 
         ### Compute Number of Trainable Parameters Before LoRA ###
         before_params = self._compute_trainable_parameters()
@@ -326,24 +326,17 @@ class LoRAModel(nn.Module):
                 if dig_deeper:                    
                     self._apply_lora(child)
 
-    def save_model(self, save_only_adapter=True):
+    def save_model(self, path, save_trainable_only=True):
         
-        if save_only_adapter:
-            state_dict = {name: param for name, param in self.named_parameters() if param.requires_grad}
-        else:
-            state_dict = self.state_dict()
+        state_dict = {name: param for name, param in self.named_parameters() \
+                      if (param.requires_grad and save_trainable_only)}
 
-        save_file(state_dict, "adapter_checkpoint.pt")
+        save_file(state_dict, path)
         
-
-    def load_lora(self):
-
-        load_model(self, "adapter_checkpoint.pt", strict=False)
-
-
-
+    def load_model(self, path):
         
-
+        state_dict = load_file(path)
+        self.load_state_dict(state_dict=state_dict, strict=False)
 
     def _compute_trainable_parameters(self):
 
