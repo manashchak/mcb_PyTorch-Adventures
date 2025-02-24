@@ -1,4 +1,4 @@
-# Attention is All You Need
+# Attention is All You Need &nbsp; [<img src="../../../src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1893829898277671057)&nbsp; [<img src="../../../src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://youtu.be/JXY5CmiK3LI)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1vJAlxRehKG7yzAFJTTPa4Ecew0cxc1fL?usp=sharing)
 
 ![image](https://raw.githubusercontent.com/priyammaz/PyTorch-Adventures/main/src/visuals/attention_mechanism_visual.png)
 
