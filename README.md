@@ -71,21 +71,23 @@ There are a few other datasets that we will use but are inconsistent to automati
 ## Natural Language Processing ##
 - [**Causal Language Modeling: GPT**](PyTorch%20for%20NLP/GPT%20for%20Causal%20Language%20Models)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1DZ406Ytb-ls1jDI1BovARwYq__ptr1Tx?usp=sharing)
 - [**Masked Language Modeling: RoBERTa**](PyTorch%20for%20NLP/RoBERTa%20for%20Masked%20Language%20Models)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1MChQ84-1VKBbjNCmzPQL02hxl-gckEYh?usp=sharing)
-- **MLP to Mixture of Experts**
+  
+- [**Attention is All You Need for Language Translation**](PyTorch%20for%20NLP/Seq2Seq%20for%20Neural%20Machine%20Translation/)
 
 ## Speech Processing ##
 - **Intro to Audio Processing in PyTorch**
 - **Connectionist Temporal Classification Loss**
 - **Intro to Automatic Speech Recognition**
 - [**Quantized Audio Pre-Training: Wav2Vec2**](PyTorch%20for%20Audio/Wav2Vec2/)
-- **RNN Transducer as an Alternative to CTC**
+- **EnCodec**
 
 ## Generative AI
 - ### AutoEncoders ##
   - [**Intro to AutoEncoders**](PyTorch%20for%20Generation/AutoEncoders/Intro%20to%20AutoEncoders/Intro_To_AutoEncoders.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1DldfPN9q1uSA4UkZYHV-3Ms5be333EKN?usp=sharing)
   - [**Variational AutoEncoders**](PyTorch%20for%20Generation/AutoEncoders/Intro%20to%20AutoEncoders/Variational_AutoEncoders.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1_NLc6g5UJ-tmRUXZbF5r1FgWoEApaLmH?usp=sharing)
+  - **Beta-VAE**
   - [**Vector-Quantized Variational Autoencoders**](PyTorch%20for%20Generation/AutoEncoders/Intro%20to%20AutoEncoders/Vector_Quantized_Variational_AutoEncoders.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1QqdHlnfJV5BATUymrXy-wi3F8YUIQFpl?usp=sharing)
-  - [**Scaling Up AutoEncoders**](PyTorch%20for%20Generation/AutoEncoders/Scaling%20up%20AutoEncoders/)
+  - **Gumbel Softmax Vector Quantization***
 
 - ### Autoregressive Generation ##
   - **PixelCNN**
@@ -93,27 +95,42 @@ There are a few other datasets that we will use but are inconsistent to automati
 - ### Generative Adversarial Networks ##
   - [**Intro to Generative Adversarial Networks**](PyTorch%20for%20Generation/Generative%20Adversarial%20Network/Intro%20to%20GANs/)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1s2zEnDKo0zr4hqzSmsDzQvWHs40KPkgz?usp=sharing)
   - [**Deep Convolutional GAN**](PyTorch%20for%20Generation/Generative%20Adversarial%20Network/DCGAN/)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kB-6KvR0IVsXtWI6MElNd3m02mpX7S9u?usp=sharing)
+  - **Wasserstein GAN**
   - **SuperResolution with SRGAN**
   - **Image2Image Translation with CycleGAN**
 
 - ### Diffusion ##
   - [**Intro to Diffusion**](PyTorch%20for%20Generation/Diffusion/Intro%20to%20Diffusion/) &nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KBupTiAId1LO67IcM-yn3xkK81aj06sG?usp=sharing)
   - [**Text-Conditional Diffusion with Classifier Free Guidance**](PyTorch%20for%20Generation/Diffusion/Conditional%20Diffusion/)
-  - **Latent-Space Diffusion**
+  - [**Latent-Space Diffusion**](PyTorch%20for%20Generation/Diffusion/Latent%20Diffusion/)
+  - **Diffusion Transformers**
 
 ## MultiModal AI ##
 - **Building Vision/Language Representations: CLIP**
 - **Automatic Image Captioning**
 - **Visual Question Answering**
 
-## Dive into Attention ##
-- [**Attention is All You Need**](PyTorch%20for%20Transformers/Attention%20Mechanisms/Attention/) &nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1RG-JdVTvLr7Z2XUSbDha--kXhYqUaBs7?usp=sharing)
-- [**Sparse Windowed Attention**](PyTorch%20for%20Transformers/Attention%20Mechanisms/Sliding%20Window%20Attention/)
-- **Linear Attention**
+## Dive into Transformers ##
 
-## Sequence to Sequence Modeling ##
-- [**Attention is All You Need for Language Translation**](PyTorch%20for%20NLP/Seq2Seq%20for%20Neural%20Machine%20Translation/)
-- **CNN/RNN for Image Captioning**
+- **Attention Mechanisms**
+  - [**Attention is All You Need**](PyTorch%20for%20Transformers/Attention%20Mechanisms/Attention/) &nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1893829898277671057)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://youtu.be/JXY5CmiK3LI)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1RG-JdVTvLr7Z2XUSbDha--kXhYqUaBs7?usp=sharing)
+  - [**Windowed Attention**](PyTorch%20for%20Transformers/Attention%20Mechanisms/Sliding%20Window%20Attention/)
+  - **LinFormer**
+
+- **Positional Embeddings**
+  - **Sinusoial Encodings**
+  - **Rotary Positional Encoding**
+  - **ALiBi**
+
+- **Feed Forward**
+  - **Mixture of Experts**
+  
+- **Normalization**
+  - **Layer Norm**
+  - **RMS Norm**
+  
+- **Optimization**
+  - **KV Cache**
 
 ## Reinforcement Learning
 - ### Model-Based Learning 
@@ -128,4 +145,9 @@ There are a few other datasets that we will use but are inconsistent to automati
   - **Double Deep Q Learning**
   - **Dueling Deep Q Learning**
   - **Prioritized Experience Replay**
-  
+
+## Tools
+- [**Low Rank Adaptation**](PyTorch%20Tools/LoRA/)
+- **QLoRA**
+- **TensorRT**
+- **DeepSpeed**
