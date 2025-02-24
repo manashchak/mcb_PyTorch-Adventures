@@ -1,4 +1,4 @@
-# Wasserstein GAN
+# Wasserstein GAN&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1HneZAIokGAZW8Eq0ussFBoaw3BmG3imm?usp=sharing)
 
 <img src="https://github.com/priyammaz/PyTorch-Adventures/blob/main/src/visuals/optimal_transport.png?raw=true" alt="drawing" width="700"/>
 

@@ -1,4 +1,4 @@
-# Deep Convolutional GAN
+# Deep Convolutional GAN&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kB-6KvR0IVsXtWI6MElNd3m02mpX7S9u?usp=sharing)
 
 <img src="https://github.com/priyammaz/PyTorch-Adventures/blob/main/src/visuals/dcgan_implementation.png?raw=true" alt="drawing" width="700"/>
 
