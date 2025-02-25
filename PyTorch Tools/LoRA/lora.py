@@ -1,5 +1,4 @@
 import math
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,15 +22,14 @@ class LoRALinear(nn.Module):
         self.lora_alpha = lora_alpha
         self.lora_dtype = lora_dtype
 
-        # Cast Weights to LoRA Dtype
-        layer.weight = nn.Parameter(layer.weight.data.to(self.lora_dtype), requires_grad=False)
-        if layer.bias is not None:
-            layer.bias = nn.Parameter(layer.bias.data.to(self.lora_dtype), requires_grad=b_grad)
-
         # Store Original Layer
         self.orig_layer = layer
         self.weight = layer.weight
         self.bias = layer.bias
+
+        ### Update Gradient Flag ###
+        self.orig_layer.weight.requires_grad = False
+        self.orig_layer.bias.requires_grad = b_grad
 
         # Get In/Out Features
         self.out_features, self.in_features = self.orig_layer.weight.shape
@@ -139,7 +137,7 @@ class LoRAEmbedding(nn.Module):
         """
         merged_weight = self.orig_embed.weight.data + (self.lora_A @ self.lora_B) * self.scaling
 
-        merged_layer = nn.Embeddiong(self.num_embeddings, self.embedding_dim)
+        merged_layer = nn.Embedding(self.num_embeddings, self.embedding_dim)
 
         merged_layer.weight.data = merged_weight
 
@@ -181,7 +179,6 @@ class LoRAConv2d(nn.Module):
         super().__init__()
 
         assert isinstance(layer, nn.Conv2d), "LoRAConv2d only works with nn.Conv2d" 
-
         self.rank = rank 
         self.lora_alpha = lora_alpha
         self.kernel_size = layer.kernel_size
@@ -189,14 +186,14 @@ class LoRAConv2d(nn.Module):
         self.padding = layer.padding
         self.lora_dtype = lora_dtype
 
-        ### Cast Weights to LoRA Dtype ###
-        layer.weight = nn.Parameter(layer.weight.to(self.lora_dtype), requires_grad=False)
-        layer.bias = nn.Parameter(layer.bias.to(self.lora_dtype), requires_grad=b_grad)
-
         ### Store the Layer ###
         self.orig_conv = layer
         self.weight = layer.weight
         self.bias = layer.bias
+
+        ### Change Gradient Flag ###
+        self.orig_conv.weight.requires_grad = False
+        self.orig_conv.bias.requires_grad = b_grad
 
         ### Convolution Weight Shape ###
         self.out_channels, self.in_channels, self.kernel_height, self.kernel_width = self.orig_conv.weight.shape
@@ -215,7 +212,7 @@ class LoRAConv2d(nn.Module):
         self.scaling = self.lora_alpha / self.rank**0.5 if use_rslora else self.lora_alpha / self.rank
 
     def __repr__(self):
-        return f"LoRAConv2D(in_channels={self.weight.shape[1]}, out_channels={self.weight.shape[0]}, rank={self.rank}, kernel_size={self.kernel_size})"
+        return f"LoRAConv2D(in_channels={self.in_channels}, out_channels={self.out_channels}, rank={self.rank}, kernel_size={self.kernel_size})"
     
     def _merge_weights(self):
         """

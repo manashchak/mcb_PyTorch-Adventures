@@ -28,10 +28,10 @@ learning_rate = 0.0005
 weight_decay = 0.001
 max_grad_norm = 1.0
 num_workers = 32
-gradient_checkpointing = True
+gradient_checkpointing = False
 log_wandb = False
 hf_dataset = "food101"
-hf_model_name = "google/vit-huge-patch14-224-in21k" #"google/vit-base-patch16-224"
+hf_model_name = "google/vit-base-patch16-224"
 
 ######################
 ### LORA ARGUMENTS ###
