@@ -71,6 +71,7 @@ There are a few other datasets that we will use but are inconsistent to automati
 ## Natural Language Processing ##
 - [**Causal Language Modeling: GPT**](PyTorch%20for%20NLP/GPT%20for%20Causal%20Language%20Models)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1DZ406Ytb-ls1jDI1BovARwYq__ptr1Tx?usp=sharing)
 - [**Masked Language Modeling: RoBERTa**](PyTorch%20for%20NLP/RoBERTa%20for%20Masked%20Language%20Models)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1MChQ84-1VKBbjNCmzPQL02hxl-gckEYh?usp=sharing)
+- **Building Vision/Language Representations: CLIP**
   
 - [**Attention is All You Need for Language Translation**](PyTorch%20for%20NLP/Seq2Seq%20for%20Neural%20Machine%20Translation/)
 
@@ -99,17 +100,14 @@ There are a few other datasets that we will use but are inconsistent to automati
   - [**Wasserstein GAN**](PyTorch%20for%20Generation/Generative%20Adversarial%20Network/WGAN/)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1HneZAIokGAZW8Eq0ussFBoaw3BmG3imm?usp=sharing)
   - **SuperResolution with SRGAN**
   - **Image2Image Translation with CycleGAN**
+  - **HIFIGAN**
 
 - ### Diffusion ##
   - [**Intro to Diffusion**](PyTorch%20for%20Generation/Diffusion/Intro%20to%20Diffusion/) &nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1KBupTiAId1LO67IcM-yn3xkK81aj06sG?usp=sharing)
   - [**Text-Conditional Diffusion with Classifier Free Guidance**](PyTorch%20for%20Generation/Diffusion/Conditional%20Diffusion/)
   - [**Latent-Space Diffusion**](PyTorch%20for%20Generation/Diffusion/Latent%20Diffusion/)
+  - **DDIM**
   - **Diffusion Transformers**
-
-## MultiModal AI ##
-- **Building Vision/Language Representations: CLIP**
-- **Automatic Image Captioning**
-- **Visual Question Answering**
 
 ## Dive into Transformers ##
 
@@ -150,6 +148,5 @@ There are a few other datasets that we will use but are inconsistent to automati
 ## Tools
 - **Gradient Checkpointing**
 - [**Low Rank Adaptation**](PyTorch%20Tools/LoRA/)
-- **QLoRA**
 - **TensorRT**
 - **DeepSpeed**
