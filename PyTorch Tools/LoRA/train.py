@@ -28,10 +28,10 @@ learning_rate = 0.0005
 weight_decay = 0.001
 max_grad_norm = 1.0
 num_workers = 32
-gradient_checkpointing = False
+gradient_checkpointing = True
 log_wandb = False
 hf_dataset = "food101"
-hf_model_name = "google/vit-base-patch16-224"
+hf_model_name = "google/vit-huge-patch14-224-in21k" #"google/vit-base-patch16-224"
 
 ######################
 ### LORA ARGUMENTS ###
@@ -54,6 +54,7 @@ accelerator = Accelerator(project_dir=path_to_experiment,
                           log_with="wandb" if log_wandb else None)
 if log_wandb:
     accelerator.init_trackers(experiment_name, init_kwargs={"wandb": {"name": wandb_run_name}})
+
 
 ###########################
 ### Prepare DataLoaders ###
@@ -85,8 +86,9 @@ if gradient_checkpointing:
     model.gradient_checkpointing_enable()
     
 precision_dict = {"fp32": torch.float32, 
-                "fp16": torch.float16, 
-                "bf16": torch.bfloat16}
+                  "fp16": torch.float16, 
+                  "bf16": torch.bfloat16,
+                  "no": torch.float32}
 
 lora_model = LoRAModel(model=model, 
                        rank=rank, 
@@ -95,7 +97,7 @@ lora_model = LoRAModel(model=model,
                        target_modules=target_modules,
                        exclude_modules=exclude_modules,
                        lora_dropout=lora_dropout,
-                       ora_dtype=precision_dict[accelerator.mixed_precision])
+                       lora_dtype=precision_dict[accelerator.mixed_precision])
 
 ###############################
 ### Define Training Metrics ###
