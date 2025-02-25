@@ -148,6 +148,7 @@ There are a few other datasets that we will use but are inconsistent to automati
   - **Prioritized Experience Replay**
 
 ## Tools
+- **Gradient Checkpointing**
 - [**Low Rank Adaptation**](PyTorch%20Tools/LoRA/)
 - **QLoRA**
 - **TensorRT**
