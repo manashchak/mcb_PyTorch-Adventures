@@ -26,7 +26,6 @@ class LoRALayerBase:
         - lora_alpha: LoRA constant
         - lora_dropout: Dropout Probability on LoRA
         - use_rslora: Scale lora_alpha by root of the rank
-        - lora_dtype: What precision type to train our LoRA Matricies
     """
 
     def __init__(self, 
