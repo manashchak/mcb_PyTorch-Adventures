@@ -8,10 +8,11 @@ from torchvision import transforms
 from accelerate import Accelerator
 from torchmetrics import Accuracy
 from datasets import load_dataset
+from safetensors.torch import save_file
+from transformers import AutoModelForImageClassification, AutoImageProcessor, \
+    DefaultDataCollator, get_cosine_schedule_with_warmup
 
 from lora import LoraConfig, LoraModel
-from transformers import AutoModelForImageClassification, AutoImageProcessor
-from transformers import DefaultDataCollator
 
 import warnings 
 warnings.filterwarnings("ignore")
@@ -22,10 +23,11 @@ warnings.filterwarnings("ignore")
 experiment_name = "LoRAImageClassifier"
 wandb_run_name = "vit_lora_classifier"
 working_directory = "work_dir"
-epochs = 1
+epochs = 3
 batch_size = 64
 learning_rate = 3e-5
 weight_decay = 0.001
+warmup_steps = 100
 max_grad_norm = 1.0
 num_workers = 32
 gradient_checkpointing = False
@@ -37,6 +39,7 @@ hf_model_name = "google/vit-base-patch16-224"
 ### LORA ARGUMENTS ###
 ######################
 use_lora = True
+train_head_only = False
 target_modules = ["query", "key", "value", "dense", "projection"]
 exclude_modules = ["classifier"] # Dont do LoRA on untrained classifier
 rank = 8
@@ -87,7 +90,14 @@ model = AutoModelForImageClassification.from_pretrained(hf_model_name,
 if gradient_checkpointing:
     model.gradient_checkpointing_enable()
 
+if not use_lora and train_head_only:
+    accelerator.print("Training Classifier Head Only")
+    for name, param in model.named_parameters():
+        if "classifier" not in name:
+            param.requires_grad = False
+
 if use_lora:
+    accelerator.print("Converting to LoRA")
     lora_config = LoraConfig(
         rank=rank, 
         target_modules=target_modules, 
@@ -99,6 +109,8 @@ if use_lora:
     )
 
     model = LoraModel(model, lora_config).to(accelerator.device)
+
+accelerator.print(model)
 
 ###############################
 ### Define Training Metrics ###
@@ -112,11 +124,20 @@ accuracy_fn = Accuracy(task="multiclass", num_classes=len(labels)).to(accelerato
 params_to_train = filter(lambda p: p.requires_grad, model.parameters())
 optimizer = torch.optim.AdamW(params_to_train, lr=learning_rate, weight_decay=weight_decay)
 
+########################
+### DEFINE SCHEDULER ###
+########################
+
+scheduler = get_cosine_schedule_with_warmup(optimizer=optimizer, 
+                                            num_warmup_steps=warmup_steps * accelerator.num_processes, 
+                                            num_training_steps=epochs * len(trainloader) * accelerator.num_processes)
+
+
 ##########################
 ### Prepare Everything ###
 ##########################
-model, optimizer, trainloader, testloader = accelerator.prepare(
-    model, optimizer, trainloader, testloader
+model, optimizer, trainloader, testloader, scheduler = accelerator.prepare(
+    model, optimizer, trainloader, testloader, scheduler
 )
 
 #####################
@@ -173,6 +194,9 @@ for epoch in range(epochs):
         ### Iterate Progress Bar ###
         progress_bar.update(1)
 
+        ### Update Learning Rate ###
+        scheduler.step()
+
     model.eval()
     for batch in tqdm(testloader, disable=not accelerator.is_local_main_process):
         images, targets = batch["pixel_values"].to(accelerator.device), batch["labels"].to(accelerator.device)
@@ -210,8 +234,14 @@ for epoch in range(epochs):
 
 ### Save Final Model ###
 accelerator.wait_for_everyone()
-accelerator.unwrap_model(model).save_model(os.path.join(working_directory, experiment_name, "food_adapter_checkpoint.safetensors"))
-accelerator.unwrap_model(model).save_model(os.path.join(working_directory, experiment_name, "full_food_checkpoint.safetensors"), merge_weights=True)
+
+if use_lora:
+    accelerator.unwrap_model(model).save_model(os.path.join(working_directory, experiment_name, "food_adapter_checkpoint.safetensors"))
+    accelerator.unwrap_model(model).save_model(os.path.join(working_directory, experiment_name, "food_merged_checkpoint.safetensors"), merge_weights=True)
+elif not use_lora and train_head_only:
+    save_file(accelerator.unwrap_model(model).state_dict(), os.path.join(working_directory, experiment_name, "food_headonly_checkpoint.safetensors"))
+else:
+    save_file(accelerator.unwrap_model(model).state_dict(), os.path.join(working_directory, experiment_name, "food_fulltrain_checkpoint.safetensors"))
 
 ### End Training for Trackers to Exit ###
 accelerator.end_training()

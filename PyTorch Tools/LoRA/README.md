@@ -48,8 +48,55 @@ $$O = XW^T + \alpha * XAB = X(W^T + \alpha AB)$$
 
 Now you have to save the whole models weights but thats ok too once you are done training, its really whatever you want. 
 
+## Finetuning Results
+
+So how does this perform? Lets take a look! I do two cases here: Vision and Language Finetuning. 
+
+### Vision Transformer Finetuning
+
+We will be finetuning ViT on the Foods dataset with the same settings, only changing between using LoRA, training the full model, or finetuning only the classifier head. 
+
+- Epochs: 3
+- lr: 3e-5
+- rank: 8
+- lora_alpha: 8
+- use_rslora = True
+
+**Note**: LoRA Was applied to all QKV Layers, the Dense Layer found in the Feed Forward Module and the convolutional projection layer
+
+| Model              | Learnable Params |  %Trainable | Accuracy |
+| :---------------- |  ----: |----: |----: |
+| ViT-Base (All Params)    | 85,876,325 | 100% | 88.5% | 
+| ViT-Base + LoRA | 1,500,773 | 1.9% | 84.6% |
+| ViT-Base Head Only | 77,568 | 0.1% | 77.3% |
+
+
+### RoBERTa Finetuning
+
+We will be finetuning RoBERTa on the IMDB Movie Review Dataset with the same settings, only changing between using LoRA, training the full model, or finetuning only the classifier head. 
+
+- Epochs: 3
+- lr: 3e-5
+- rank: 8
+- lora_alpha: 8
+- use_rslora = True
+
+**Note**: LoRA Was applied to all QKV Layers, the Dense Layer found in the Feed Forward Module and the word embedding matrix
+
+| Model              | Learnable Params |  %Trainable | Accuracy |
+| :---------------- |  ----: |----: |----: |
+| RoBERTa-Base (All Params)    | 124,647,170 | 100% | 95.4% | 
+| RoBERTa-Base + LoRA | 2,410,442 | 1.9% | 94.8% |
+| RoBERTa-Base Head Only | 592,130 | 0.5% | 82.6% |
+
+### Where are the Memory Savings?
+
+You will notice that using LoRA vs not using it doesn't actually give you a ton of savings in memory. This is because, when training a model, your weights are not the only thing you have. During backpropagation, the model needs the intermediate activations from the model, and by default, the computational graph holds onto all of them. This means, the deeper the model the more of these intermediate states there are. Real memory savings come from using ```gradient_checkpointing```. For modules set for checkpointing, instead of holding onto the intermediate outputs, their forward functions will be recomputed during backprop. This will save a ton of memory, but will cost more in compute. On the other hand, when training multi-billion parameter models, this actually lets you perform it with low resources!
+
+To further drive down the memory cost, we can use parameter quantization, which is QLoRA! We will implement that in the next one, using the ```bitsandbytes``` package
+
 ## PEFT
 
-The best way to do this is [PEFT](https://github.com/huggingface/peft), an incredble package by Huggingface 🤗! This includes more advanced methods such as QLoRA which quantized the model weights and drives down memory usage. Maybe we will implement this with [BitsandBytes](https://github.com/bitsandbytes-foundation/bitsandbytes) in the future but nothing theoretically has changed, just the precision type of our model. 
+The best way to do this is [PEFT](https://github.com/huggingface/peft), an incredble package by Huggingface 🤗! 
 
 

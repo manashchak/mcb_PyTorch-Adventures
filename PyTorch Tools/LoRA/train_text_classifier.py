@@ -7,10 +7,11 @@ from torch.utils.data import DataLoader
 from accelerate import Accelerator
 from torchmetrics import Accuracy
 from datasets import load_dataset
-
-from lora import LoraConfig, LoraModel
+from safetensors.torch import save_file
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, \
     DataCollatorWithPadding, get_cosine_schedule_with_warmup
+
+from lora import LoraConfig, LoraModel
 
 import warnings 
 warnings.filterwarnings("ignore")
@@ -23,7 +24,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 experiment_name = "LoRATextClassifier"
 wandb_run_name = "bert_lora_classifier"
 working_directory = "work_dir"
-epochs = 5
+epochs = 3
 batch_size = 64
 learning_rate = 3e-5
 weight_decay = 0.001
@@ -39,7 +40,8 @@ hf_model_name = "FacebookAI/roberta-base"
 ### LORA ARGUMENTS ###
 ######################
 use_lora = True
-target_modules = ["query", "key", "value", "dense"]
+train_head_only = False
+target_modules = ["query", "key", "value", "dense", "word_embeddings"]
 exclude_modules = ["classifier"] # Dont do LoRA on untrained classifier
 rank = 8
 lora_alpha = 8
@@ -84,7 +86,6 @@ testloader = DataLoader(dataset["test"], batch_size=batch_size, collate_fn=data_
 #######################
 ### Load LoRA Model ###
 #######################
-
 model = AutoModelForSequenceClassification.from_pretrained(hf_model_name, 
                                                            num_labels=len(labels), 
                                                            ignore_mismatched_sizes=True)
@@ -92,7 +93,14 @@ model = AutoModelForSequenceClassification.from_pretrained(hf_model_name,
 if gradient_checkpointing:
     model.gradient_checkpointing_enable()
 
+if not use_lora and train_head_only:
+    accelerator.print("Training Classifier Head Only")
+    for name, param in model.named_parameters():
+        if "classifier" not in name:
+            param.requires_grad = False
+
 if use_lora:
+    accelerator.print("Converting to LoRA")
     lora_config = LoraConfig(
         rank=rank, 
         target_modules=target_modules, 
@@ -104,6 +112,8 @@ if use_lora:
     )
 
     model = LoraModel(model, lora_config).to(accelerator.device)
+
+accelerator.print(model)
 
 ###############################
 ### Define Training Metrics ###
@@ -223,8 +233,14 @@ for epoch in range(epochs):
 
 ### Save Final Model ###
 accelerator.wait_for_everyone()
-accelerator.unwrap_model(model).save_model(os.path.join(working_directory, experiment_name, "imdb_adapter_checkpoint.safetensors"))
-accelerator.unwrap_model(model).save_model(os.path.join(working_directory, experiment_name, "imdb_food_checkpoint.safetensors"), merge_weights=True)
+
+if use_lora:
+    accelerator.unwrap_model(model).save_model(os.path.join(working_directory, experiment_name, "imdb_adapter_checkpoint.safetensors"))
+    accelerator.unwrap_model(model).save_model(os.path.join(working_directory, experiment_name, "imdb_merged_checkpoint.safetensors"), merge_weights=True)
+elif not use_lora and train_head_only:
+    save_file(accelerator.unwrap_model(model).state_dict(), os.path.join(working_directory, experiment_name, "imdb_headonly_checkpoint.safetensors"))
+else:
+    save_file(accelerator.unwrap_model(model).state_dict(), os.path.join(working_directory, experiment_name, "imdb_fulltrain_checkpoint.safetensors"))
 
 ### End Training for Trackers to Exit ###
 accelerator.end_training()

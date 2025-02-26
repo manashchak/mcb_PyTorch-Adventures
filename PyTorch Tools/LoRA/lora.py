@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass
 from typing import Optional, Literal, Union
-from safetensors.torch import save_file, load_file
+from safetensors.torch import save_file
 
 class LoRALayerBase:
 
@@ -366,8 +366,8 @@ class LoraModel(nn.Module):
         lora_trainable_params = self._compute_trainable_parameters()
 
         print_string = ""
-        print_string += f"Initial Parameters : {orig_trainable_params} ||"
-        print_string += f"LoRA Parameters : {lora_trainable_params} ||"
+        print_string += f"Initial Parameters : {orig_trainable_params} || "
+        print_string += f"LoRA Parameters : {lora_trainable_params} || "
         print_string += f"Trainable Proportion : {round(lora_trainable_params*100/orig_trainable_params, 2)}%"
 
         print(print_string)
