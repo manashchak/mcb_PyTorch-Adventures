@@ -537,19 +537,3 @@ class LoraModel(nn.Module):
             state_dict = {name: _detach_cpu(param) for (name, param) in self.named_parameters() if (param.requires_grad)}
 
         save_file(state_dict, path)
-
-if __name__ == "__main__":
-
-    from transformers import AutoModelForImageClassification
-
-    model = AutoModelForImageClassification.from_pretrained("google/vit-base-patch16-224")
-
-    for name, param in model.named_parameters():
-        print(name)
-
-    lora_config = LoraConfig(exclude_modules="classifier", 
-                             target_modules=["query", "key", "value", "dense", "projection"],
-                             bias="none")
-    lora_model = LoraModel(model, lora_config).to("cuda")
-    lora_model.save_model(merge_weights=False)
-    
