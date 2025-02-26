@@ -15,10 +15,10 @@ from dataclasses import dataclass
 from typing import Optional, Literal, Union
 from safetensors.torch import save_file, load_file
 
-class LoRALayerConfig:
+class LoRALayerBase:
 
     """
-    Default Class for LoRA Layer with all the attributes
+    Base Class for LoRA Layer with all the attributes
     we will need across all our layers
 
     Args: 
@@ -33,16 +33,21 @@ class LoRALayerConfig:
                  rank=8, 
                  lora_alpha=8, 
                  lora_dropout=0.0, 
-                 use_rslora=True,
-                 lora_dtype=torch.float32):
+                 use_rslora=True):
         
         self.rank = rank
         self.lora_alpha = lora_alpha 
         self.scaling = self.lora_alpha / self.rank**0.5 if use_rslora else self.lora_alpha / self.rank
         self.lora_dropout = nn.Dropout(lora_dropout) if lora_dropout > 0 else lambda x: x
-        self.lora_dtype = lora_dtype
 
-class LoRALinear(nn.Linear, LoRALayerConfig):
+    def _load_pretrained_weights(self, state_dict):
+        self.weight.data = state_dict["weight"]
+        if "bias" in state_dict.keys():
+            self.bias.data = state_dict["bias"]
+        
+
+
+class LoRALinear(nn.Linear, LoRALayerBase):
 
     """
     LoRA Implementation on a Linear Layer, basically a wrapper on the
@@ -57,17 +62,15 @@ class LoRALinear(nn.Linear, LoRALayerConfig):
                  lora_alpha=8, 
                  lora_dropout=0.0,
                  use_rslora=True,
-                 lora_dtype=torch.float32,
                  **kwargs):
         
         ### Initialize Inherited Classes ###
         nn.Linear.__init__(self, in_features, out_features, bias=bias, **kwargs)
-        LoRALayerConfig.__init__(self,
-                                 rank=rank, 
-                                 lora_alpha=lora_alpha, 
-                                 lora_dropout=lora_dropout, 
-                                 use_rslora=use_rslora, 
-                                 lora_dtype=lora_dtype)
+        LoRALayerBase.__init__(self,
+                               rank=rank, 
+                               lora_alpha=lora_alpha, 
+                               lora_dropout=lora_dropout, 
+                               use_rslora=use_rslora)
         
         assert rank > 0, "If Rank is 0, Why are you doing LoRA?"
 
@@ -77,17 +80,12 @@ class LoRALinear(nn.Linear, LoRALayerConfig):
         ### Define LoRA Layers (shape is [in_features, out_features] ###
         ### Normally Weight matricies are [out_features, in_features] ###
         ### This just saves us a few transposes ###
-        self.lora_A = nn.Parameter(torch.zeros(in_features, rank, dtype=lora_dtype))
-        self.lora_B = nn.Parameter(torch.zeros(rank, out_features, dtype=lora_dtype))
+        self.lora_A = nn.Parameter(torch.zeros(in_features, rank))
+        self.lora_B = nn.Parameter(torch.zeros(rank, out_features))
 
         ### Initialize lora_A. In the paper they use normal, but in the ###
         ### implementation they use kaiming_uniform_, so lets use that! ###
         nn.init.kaiming_normal_(self.lora_A, a=math.sqrt(5))
-
-    def _load_pretrained_weights(self, state_dict):
-        self.weight.data = state_dict["weight"]
-        if "bias" in state_dict.keys():
-            self.bias.data = state_dict["bias"]
 
     def _merge_weights(self):
 
@@ -126,7 +124,7 @@ class LoRALinear(nn.Linear, LoRALayerConfig):
         
         return output
     
-class LoRAEmbedding(nn.Embedding, LoRALayerConfig):
+class LoRAEmbedding(nn.Embedding, LoRALayerBase):
     
     """
     LoRA Implementation on an Embedding Layer, basically a wrapper on the
@@ -140,17 +138,15 @@ class LoRAEmbedding(nn.Embedding, LoRALayerConfig):
                  lora_alpha=8, 
                  lora_dropout=0.0,
                  use_rslora=True,
-                 lora_dtype=torch.float32,
                  **kwargs):
         
         ### Initialize Inherited Classes ###
         nn.Embedding.__init__(self, num_embeddings, embedding_dim, **kwargs)
-        LoRALayerConfig.__init__(self,
-                                 rank=rank, 
-                                 lora_alpha=lora_alpha, 
-                                 lora_dropout=lora_dropout, 
-                                 use_rslora=use_rslora, 
-                                 lora_dtype=lora_dtype)
+        LoRALayerBase.__init__(self,
+                               rank=rank, 
+                               lora_alpha=lora_alpha, 
+                               lora_dropout=lora_dropout, 
+                               use_rslora=use_rslora)
         
         assert rank > 0, "If Rank is 0, Why are you doing LoRA?"
 
@@ -158,15 +154,12 @@ class LoRAEmbedding(nn.Embedding, LoRALayerConfig):
         self.weight.requires_grad = False
         
         ### Define LoRA Layers ###
-        self.lora_A = nn.Parameter(torch.zeros(self.num_embeddings, rank, dtype=lora_dtype))
-        self.lora_B = nn.Parameter(torch.zeros(rank, self.embedding_dim, dtype=lora_dtype))
+        self.lora_A = nn.Parameter(torch.zeros(self.num_embeddings, rank))
+        self.lora_B = nn.Parameter(torch.zeros(rank, self.embedding_dim))
 
         ### Initialize lora_A. In the paper they use normal, but in the ###
         ### implementation they use kaiming_uniform_, so lets use that! ###
         nn.init.kaiming_normal_(self.lora_A, a=math.sqrt(5))
-
-    def _load_pretrained_weights(self, state_dict):
-        self.weight.data = state_dict["weight"]
 
     def _merge_weights(self):
         """
@@ -212,7 +205,8 @@ class LoRAEmbedding(nn.Embedding, LoRALayerConfig):
 
         return output
 
-class LoRAConv2d(nn.Conv2d, LoRALayerConfig):
+
+class LoRAConv2d(nn.Conv2d, LoRALayerBase):
     
     """
     LoRA Implementation on an Conv2d Layer, basically a wrapper on the
@@ -233,7 +227,6 @@ class LoRAConv2d(nn.Conv2d, LoRALayerConfig):
                  lora_alpha=8, 
                  lora_dropout=0.0,
                  use_rslora=True,
-                 lora_dtype=torch.float32,
                  **kwargs):
         
         ### Initialize Inherited Classes ###
@@ -245,12 +238,11 @@ class LoRAConv2d(nn.Conv2d, LoRALayerConfig):
                            padding=padding, 
                            bias=bias, 
                            **kwargs)
-        LoRALayerConfig.__init__(self,
-                                 rank=rank, 
-                                 lora_alpha=lora_alpha, 
-                                 lora_dropout=lora_dropout, 
-                                 use_rslora=use_rslora, 
-                                 lora_dtype=lora_dtype)
+        LoRALayerBase.__init__(self,
+                               rank=rank, 
+                               lora_alpha=lora_alpha, 
+                               lora_dropout=lora_dropout, 
+                               use_rslora=use_rslora)
         
         assert rank > 0, "If Rank is 0, Why are you doing LoRA?"
 
@@ -258,17 +250,12 @@ class LoRAConv2d(nn.Conv2d, LoRALayerConfig):
         self.weight.requires_grad = False
         
         ### Create Our Low Rank Matricies (Flatten Kernel Weights and Output Rank) ###
-        self.lora_A = nn.Parameter(torch.zeros(rank, self.in_channels, *self.kernel_size, dtype=lora_dtype))
-        self.lora_B = nn.Parameter(torch.zeros(rank, self.out_channels, dtype=lora_dtype))
+        self.lora_A = nn.Parameter(torch.zeros(rank, self.in_channels, *self.kernel_size))
+        self.lora_B = nn.Parameter(torch.zeros(rank, self.out_channels))
 
         ### Initialize lora_A. In the paper they use normal, but in the ###
         ### implementation they use kaiming_uniform_, so lets use that! ###
         nn.init.kaiming_normal_(self.lora_A, a=math.sqrt(5))
-
-    def _load_pretrained_weights(self, state_dict):
-        self.weight.data = state_dict["weight"]
-        if "bias" in state_dict.keys():
-            self.bias.data = state_dict["bias"]
 
     def _merge_weights(self):
 
@@ -344,18 +331,13 @@ class LoraConfig:
     lora_dropout: float = 0.0
     bias: Literal["none", "all", "lora_only"] = "none"
     use_rslora: bool = True
-    lora_dtype: Literal["fp32", "fp16", "bf16"] = "fp32"
-
-dtype_precision_dict = {"fp32": torch.float32, 
-                        "fp16": torch.float16, 
-                        "bf16": torch.bfloat16}
 
 class LoraModel(nn.Module):
 
     def __init__(self, model, config):
         super(LoraModel, self).__init__()
 
-        self.model = model
+        self.lora_model = model
         self.config = config
 
         ### Ensure Taraget Modules/Exclude Modules are Lists ###
@@ -368,16 +350,43 @@ class LoraModel(nn.Module):
         elif isinstance(self.config.exclude_modules, str):
             self.config.exclude_modules = [self.config.exclude_modules]
 
+        ### Get Number of Trainable Parameters ###
+        orig_trainable_params = self._compute_trainable_parameters()
+
         ### Disable All Grads in Model ###
         self._disable_all_grads()
 
         ### Apply LoRA to Target Modules ###
-        self._apply_lora(model)
+        self._apply_lora(self.lora_model)
 
         ### Toggle Bias Gradients ###
         self._toggle_bias_grad()
 
+        ### Get LoRA Trainable Parameters ###
+        lora_trainable_params = self._compute_trainable_parameters()
+
+        print_string = ""
+        print_string += f"Initial Parameters : {orig_trainable_params} ||"
+        print_string += f"LoRA Parameters : {lora_trainable_params} ||"
+        print_string += f"Trainable Proportion : {round(lora_trainable_params*100/orig_trainable_params, 2)}%"
+
+        print(print_string)
+
+    def forward(self, *inputs, **kwargs):
+
+        """
+        The forward function is the same, so a catchall here
+        to pass all of our stuff from the forward methdod into
+        our models forward method
+        """
+
+        return self.lora_model(*inputs, **kwargs)
+    
     def _apply_lora(self, module):
+
+        """
+        Method to recursively replace all the layers in a model with LoraLayers
+        """
 
         ### Recursively Go Through Model and Find Layers To Convert ###
         for name, child in module.named_children():
@@ -394,8 +403,7 @@ class LoraModel(nn.Module):
                                            rank=self.config.rank,
                                            lora_alpha=self.config.lora_alpha, 
                                            lora_dropout=self.config.lora_dropout, 
-                                           use_rslora=self.config.use_rslora,
-                                           lora_dtype=dtype_precision_dict[self.config.lora_dtype])
+                                           use_rslora=self.config.use_rslora)
 
                     new_layer._load_pretrained_weights(child.state_dict())
                     setattr(module, name, new_layer)
@@ -411,8 +419,7 @@ class LoraModel(nn.Module):
                                            rank=self.config.rank, 
                                            lora_alpha=self.config.lora_alpha, 
                                            lora_dropout=self.config.lora_dropout, 
-                                           use_rslora=self.config.use_rslora,
-                                           lora_dtype=dtype_precision_dict[self.config.lora_dtype])
+                                           use_rslora=self.config.use_rslora)
                     
                     new_layer._load_pretrained_weights(child.state_dict())
                     setattr(module, name, new_layer)
@@ -424,19 +431,25 @@ class LoraModel(nn.Module):
                                               rank=self.config.rank, 
                                               lora_alpha=self.config.lora_alpha, 
                                               lora_dropout=self.config.lora_dropout, 
-                                              use_rslora=self.config.use_rslora,
-                                              lora_dtype=dtype_precision_dict[self.config.lora_dtype])
+                                              use_rslora=self.config.use_rslora)
                     
                     new_layer._load_pretrained_weights(child.state_dict())
                     setattr(module, name, new_layer)
 
-            ### If there are more children, Recurse into them ###
-            if len(list(child.children())) > 0:
+            ### If there are more children and its not an exclusion module, Recurse into them ###
+            if (len(list(child.children())) > 0) and not any([ex in name for ex in self.config.exclude_modules]):
                 self._apply_lora(child)
 
     def _toggle_bias_grad(self):
 
-        for name, param in self.model.named_parameters():
+        """
+        Method to turn off bias gradients depending on:
+            - none:  Dont train any biases
+            - all: train all biases
+            - lora_only: train biases only in lora layers
+        """
+
+        for name, param in self.lora_model.named_parameters():
             
             ### Dont want to disable gradients for Excluded Layers ###
             if not any([ex in name for ex in self.config.exclude_modules]):
@@ -450,7 +463,11 @@ class LoraModel(nn.Module):
 
     def _disable_all_grads(self):
         
-        for name, param in self.model.named_parameters():
+        """
+        Helper function to disable all gradients 
+        """
+
+        for name, param in self.lora_model.named_parameters():
 
             ### If not in exclude modules, turn off gradients ###
             if not any([ex in name for ex in self.config.exclude_modules]):
@@ -458,23 +475,81 @@ class LoraModel(nn.Module):
 
     def _compute_trainable_parameters(self):
 
+        """
+        Helper function to compute all parameters with gradients
+        """
+
         total_learnable_params = 0
-        for param in self.model.parameters():
+        for param in self.lora_model.parameters():
             if param.requires_grad:
                 total_learnable_params += param.numel()
 
         return total_learnable_params
 
+    def _merge_weights(self, module):
+
+        """
+        Recursively trigger weight merging and replace in model 
+        """
+
+        for name, child in module.named_children():
+
+            if isinstance(child, (LoRALinear, LoRAEmbedding, LoRAConv2d)):
+                 
+                 ### Merge the Layer ###
+                 merged_layer = child._merge_weights()
+
+                 ### Replace LoRA Layer with Merged ###
+                 setattr(module, name, merged_layer)
+
+            else:
+
+                if len(list(child.children())) > 0:
+                    self._merge_weights(child)
+
+    def save_model(self, path, merge_weights=False):
+
+        """
+        Method to save model safetensors to the given path
+            - merge_weights -> True: Merge LoRA weights and save
+            - merge_weights -> False: Only save trainable weights
+        """
+
+        def _detach_cpu(param):
+            return param.detach().cpu()
+        
+        ### Create New Model with Merged Weights ###
+        if merge_weights:
+            
+            ### Merge Weights ###
+            self._merge_weights(self.lora_model)
+
+            ### If Merged, then state_dict will have ALL Weights ###
+            ### When merging weights, we can remove "lora_model." from the name ###
+            ### because we can just load these weights into the original model ###
+            state_dict = {name.replace("lora_model.", ""): _detach_cpu(param) for (name, param) in self.named_parameters()}
+
+        ### Otherwise Save only the parameters we trained, everything else is frozen ###
+        ### and can be taken from the original model weights ###
+        ### To load these weights, the model needs to be wrapped in LoraModel ###
+        else:
+
+            state_dict = {name: _detach_cpu(param) for (name, param) in self.named_parameters() if (param.requires_grad)}
+
+        save_file(state_dict, path)
 
 if __name__ == "__main__":
 
     from transformers import AutoModelForImageClassification
 
     model = AutoModelForImageClassification.from_pretrained("google/vit-base-patch16-224")
+
+    for name, param in model.named_parameters():
+        print(name)
+
     lora_config = LoraConfig(exclude_modules="classifier", 
-                             target_modules=["projection", "query", "key", "value", "dense"])
-    lora_model = LoraModel(model, lora_config)
+                             target_modules=["query", "key", "value", "dense", "projection"],
+                             bias="none")
+    lora_model = LoraModel(model, lora_config).to("cuda")
+    lora_model.save_model(merge_weights=False)
     
-    for name, param in lora_model.named_parameters():
-        if "bias" in name:
-            print(name, param.requires_grad)
