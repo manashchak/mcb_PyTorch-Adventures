@@ -1,220 +1,277 @@
+"""
+LoRA Implementation that follows:
+    - Paper: https://arxiv.org/pdf/2106.09685
+    - Repo: https://github.com/microsoft/LoRA/
+
+Also, implementation by michaelnny was super helpful!
+    - https://github.com/michaelnny/QLoRA-LLM/
+"""
+
 import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from dataclasses import dataclass
+from typing import Optional, Literal, Union
 from safetensors.torch import save_file, load_file
 
-class LoRALinear(nn.Module):
+class LoRALayerConfig:
+
+    """
+    Default Class for LoRA Layer with all the attributes
+    we will need across all our layers
+
+    Args: 
+        - r: rank for LoRA
+        - lora_alpha: LoRA constant
+        - lora_dropout: Dropout Probability on LoRA
+        - use_rslora: Scale lora_alpha by root of the rank
+        - lora_dtype: What precision type to train our LoRA Matricies
+    """
 
     def __init__(self, 
-                 layer, 
                  rank=8, 
-                 lora_alpha=1, 
-                 use_rslora=True, 
-                 lora_dropout=0.0,
-                 b_grad=True, 
+                 lora_alpha=8, 
+                 lora_dropout=0.0, 
+                 use_rslora=True,
                  lora_dtype=torch.float32):
         
-        super().__init__()
-
-        assert isinstance(layer, nn.Linear), "LoRALinear Only Converts nn.Linear Layers"
-        self.rank = rank 
-        self.lora_alpha = lora_alpha
+        self.rank = rank
+        self.lora_alpha = lora_alpha 
+        self.scaling = self.lora_alpha / self.rank**0.5 if use_rslora else self.lora_alpha / self.rank
+        self.lora_dropout = nn.Dropout(lora_dropout) if lora_dropout > 0 else lambda x: x
         self.lora_dtype = lora_dtype
 
-        # Store Original Layer
-        self.orig_layer = layer
-        self.weight = layer.weight
-        self.bias = layer.bias
+class LoRALinear(nn.Linear, LoRALayerConfig):
 
-        ### Update Gradient Flag ###
-        self.orig_layer.weight.requires_grad = False
-        self.orig_layer.bias.requires_grad = b_grad
+    """
+    LoRA Implementation on a Linear Layer, basically a wrapper on the
+    nn.Linear module, with the additional lora_A/lora_B layers
+    """
 
-        # Get In/Out Features
-        self.out_features, self.in_features = self.orig_layer.weight.shape
+    def __init__(self, 
+                 in_features, 
+                 out_features,
+                 bias=True, 
+                 rank=8, 
+                 lora_alpha=8, 
+                 lora_dropout=0.0,
+                 use_rslora=True,
+                 lora_dtype=torch.float32,
+                 **kwargs):
+        
+        ### Initialize Inherited Classes ###
+        nn.Linear.__init__(self, in_features, out_features, bias=bias, **kwargs)
+        LoRALayerConfig.__init__(self,
+                                 rank=rank, 
+                                 lora_alpha=lora_alpha, 
+                                 lora_dropout=lora_dropout, 
+                                 use_rslora=use_rslora, 
+                                 lora_dtype=lora_dtype)
+        
+        assert rank > 0, "If Rank is 0, Why are you doing LoRA?"
 
-        # Create Low-Rank Matrices
-        self.lora_A = nn.Parameter(torch.zeros(self.in_features, rank, dtype=lora_dtype), requires_grad=True)
-        self.lora_B = nn.Parameter(torch.zeros(rank, self.out_features, dtype=lora_dtype), requires_grad=True)
+        ### Disable Gradients on Linear Layer Weights/Biases ###
+        self.weight.requires_grad = False
+        
+        ### Define LoRA Layers (shape is [in_features, out_features] ###
+        ### Normally Weight matricies are [out_features, in_features] ###
+        ### This just saves us a few transposes ###
+        self.lora_A = nn.Parameter(torch.zeros(in_features, rank, dtype=lora_dtype))
+        self.lora_B = nn.Parameter(torch.zeros(rank, out_features, dtype=lora_dtype))
 
-        # Initialize lora_A with Gaussian, B stays as 0s
-        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
+        ### Initialize lora_A. In the paper they use normal, but in the ###
+        ### implementation they use kaiming_uniform_, so lets use that! ###
+        nn.init.kaiming_normal_(self.lora_A, a=math.sqrt(5))
 
-        # Create LoRA Dropout
-        self.lora_dropout = nn.Dropout(lora_dropout) if lora_dropout > 0 else lambda x: x
+    def _load_pretrained_weights(self, state_dict):
+        self.weight.data = state_dict["weight"]
+        if "bias" in state_dict.keys():
+            self.bias.data = state_dict["bias"]
 
-        # Compute Scaling for LoRA
-        self.scaling = self.lora_alpha / self.rank**0.5 if use_rslora else self.lora_alpha / self.rank
-
-    def __repr__(self):
-        return f"LoRALinear(in_features={self.in_features}, out_features={self.out_features}, rank={self.rank})"
-    
     def _merge_weights(self):
+
         """
         xW^T + xAB = x(W^T + AB)
         """
-        merged_weight = self.orig_layer.weight.data + (self.lora_A @ self.lora_B).T * self.scaling
 
-        merged_layer = nn.Linear(
-            self.orig_layer.weight.shape[1],
-            self.orig_layer.weight.shape[0],
-            bias=True if self.bias is not None else False
-        )
+        ### Merge Weights ###
+        merged_weight = self.weight.data + (self.lora_A @ self.lora_B).T * self.scaling
 
-        merged_layer.weight.data = merged_weight
-
+        ### Store Weights ###
+        state_dict = {"weight": merged_weight}
         if self.bias is not None:
-            merged_layer.bias.data = self.bias
+            state_dict["bias"] = self.bias
 
-        return merged_layer
+        ### Load Weights to New Linear Layer ###
+        merged_linear = nn.Linear(self.in_features, 
+                                  self.out_features,
+                                  bias=True if self.bias is not None else False)
+        
+        merged_linear.load_state_dict(state_dict)
+
+        return merged_linear
 
     def forward(self, x):
+        
+        ### Pass Through Original Weights ###
+        orig_layer_out = F.linear(x, self.weight, bias=self.bias)
+        
+        ### LoRA Layers ###
+        lora_mult = (self.lora_A @ self.lora_B) * self.scaling
+        low_rank_out = self.lora_dropout(x) @ lora_mult
 
-        # Cast x to LoRA dtype
-        x = x.to(self.lora_dtype)
-
-        # Output with original weights (no gradients)
-        orig_output = self.orig_layer(x)
-
-        # Low-rank output (with gradients)
-        lora_mult = (self.lora_A @ self.lora_B) * self.scaling  # Shape: (in_features, out_features)
-        low_rank_output = x @ lora_mult  # Shape: (batch_size, out_features)
-
-        # Sum outputs
-        output = orig_output + low_rank_output
-
+        ### Sum Outputs ###
+        output = orig_layer_out + low_rank_out
+        
         return output
     
-class LoRAEmbedding(nn.Module):
-
+class LoRAEmbedding(nn.Embedding, LoRALayerConfig):
+    
     """
-    This is a basic implementation of the paper LoRA
-    https://arxiv.org/pdf/2106.0968
-
+    LoRA Implementation on an Embedding Layer, basically a wrapper on the
+    nn.Embedding module, with the additional lora_A/lora_B layers
     """
+
     def __init__(self, 
-                 layer, 
+                 num_embeddings, 
+                 embedding_dim, 
                  rank=8, 
-                 lora_alpha=1, 
-                 use_rslora=True, 
-                 padding_idx=None):
+                 lora_alpha=8, 
+                 lora_dropout=0.0,
+                 use_rslora=True,
+                 lora_dtype=torch.float32,
+                 **kwargs):
         
-        super().__init__()
+        ### Initialize Inherited Classes ###
+        nn.Embedding.__init__(self, num_embeddings, embedding_dim, **kwargs)
+        LoRALayerConfig.__init__(self,
+                                 rank=rank, 
+                                 lora_alpha=lora_alpha, 
+                                 lora_dropout=lora_dropout, 
+                                 use_rslora=use_rslora, 
+                                 lora_dtype=lora_dtype)
         
-        assert isinstance(layer, nn.Embedding), "LoRAEmbedding only works with nn.Embedding"
+        assert rank > 0, "If Rank is 0, Why are you doing LoRA?"
 
-        self.rank = rank 
-        self.lora_alpha = lora_alpha
-        self.padding_idx = padding_idx
+        ### Disable Gradients on Linear Layer Weights ###
+        self.weight.requires_grad = False
+        
+        ### Define LoRA Layers ###
+        self.lora_A = nn.Parameter(torch.zeros(self.num_embeddings, rank, dtype=lora_dtype))
+        self.lora_B = nn.Parameter(torch.zeros(rank, self.embedding_dim, dtype=lora_dtype))
 
-        ### These Are Our Pretrained Parameters ###
-        self.orig_embed = layer
-        self.weight = layer.weight
+        ### Initialize lora_A. In the paper they use normal, but in the ###
+        ### implementation they use kaiming_uniform_, so lets use that! ###
+        nn.init.kaiming_normal_(self.lora_A, a=math.sqrt(5))
 
-        ### Change Gradient Flag ###
-        self.orig_embed.weight.requires_grad = False
+    def _load_pretrained_weights(self, state_dict):
+        self.weight.data = state_dict["weight"]
 
-        ### Get In/Out Features (PyTorch Weight Matrix goes Out/In) ###
-        self.num_embeddings, self.embedding_dim = self.orig_embed.weight.shape
-
-        ### Create our Low Rank Matricies ###
-        self.lora_A = nn.Parameter(torch.zeros(self.num_embeddings, rank), requires_grad=True)
-        self.lora_B = nn.Parameter(torch.zeros(rank, self.embedding_dim), requires_grad=True)
-
-        ### Different than the paper but matches implementation ###
-        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
-
-        ### Compute Scaling for LoRA ###
-        self.scaling = self.lora_alpha / self.rank**0.5 if use_rslora else self.lora_alpha / self.rank
-    
-    def __repr__(self):
-        return f"LoRAEmbedding({self.num_embeddings}, {self.embedding_dim}, rank={self.rank})"
-    
     def _merge_weights(self):
         """
         xW^T + xAB = x(W^T + AB)
         """
-        merged_weight = self.orig_embed.weight.data + (self.lora_A @ self.lora_B) * self.scaling
 
-        merged_layer = nn.Embedding(self.num_embeddings, self.embedding_dim)
+        ### Merge Weights ###
+        merged_weights = self.weight.data + (self.lora_A @ self.lora_B) * self.scaling
 
-        merged_layer.weight.data = merged_weight
+        ### Store in Embedding Layer ###
+        state_dict = {"weight": merged_weights}
+        merged_emb = nn.Embedding(self.num_embeddings, self.embedding_dim)
+        merged_emb.load_state_dict(state_dict)
 
-        return merged_layer
-        
+        return merged_emb
+
 
     def forward(self, x):
 
-        ### Output W/ Original Weights (No Gradients) ###
-        orig_output = self.orig_embed(x)
-
-        ### Embed with Low Rank A Embedding Matrix ###
-        low_rank_A_output = F.embedding(x, self.lora_A)
-
-        ### Project Back to Embed Dim with Low Rank B ###
+        ### Pass Through Original Weights ###
+        orig_layer_out = F.embedding(input=x, 
+                                     weight=self.weight,
+                                     padding_idx=self.padding_idx, 
+                                     max_norm=self.max_norm, 
+                                     norm_type=self.norm_type, 
+                                     scale_grad_by_freq=self.scale_grad_by_freq, 
+                                     sparse=self.sparse)
+        
+        ### Pass Through lora_A ###
+        low_rank_A_output = F.embedding(input=x, 
+                                        weight=self.lora_A, 
+                                        padding_idx=self.padding_idx, 
+                                        max_norm=self.max_norm, 
+                                        norm_type=self.norm_type, 
+                                        scale_grad_by_freq=self.scale_grad_by_freq, 
+                                        sparse=self.sparse)
+        
+        ### Project lora_A rank dimension to embedding dimension w/ lora_B ###
         low_rank_output = (low_rank_A_output @ self.lora_B) * self.scaling
-    
+
         ### Sum Outputs ###
-        output = orig_output + low_rank_output
-        
+        output = orig_layer_out + low_rank_output
+
         return output
+
+class LoRAConv2d(nn.Conv2d, LoRALayerConfig):
     
-class LoRAConv2d(nn.Module):
-
     """
-    This is a basic implementation of the paper LoRA
-    https://arxiv.org/pdf/2106.0968
+    LoRA Implementation on an Conv2d Layer, basically a wrapper on the
+    nn.Conv2d module, with the additional lora_A/lora_B layers
 
+    This is a simplified convolution implementation, take a look at the original
+    implementation for more details!
     """
+
     def __init__(self, 
-                 layer,
+                 in_channels, 
+                 out_channels, 
+                 kernel_size, 
+                 stride=1, 
+                 padding=0, 
+                 bias=True,
                  rank=8, 
-                 lora_alpha=1, 
-                 use_rslora=True, 
+                 lora_alpha=8, 
                  lora_dropout=0.0,
-                 b_grad=True,
-                 lora_dtype=torch.float32):
+                 use_rslora=True,
+                 lora_dtype=torch.float32,
+                 **kwargs):
         
-        super().__init__()
+        ### Initialize Inherited Classes ###
+        nn.Conv2d.__init__(self,
+                           in_channels=in_channels, 
+                           out_channels=out_channels, 
+                           kernel_size=kernel_size, 
+                           stride=stride, 
+                           padding=padding, 
+                           bias=bias, 
+                           **kwargs)
+        LoRALayerConfig.__init__(self,
+                                 rank=rank, 
+                                 lora_alpha=lora_alpha, 
+                                 lora_dropout=lora_dropout, 
+                                 use_rslora=use_rslora, 
+                                 lora_dtype=lora_dtype)
+        
+        assert rank > 0, "If Rank is 0, Why are you doing LoRA?"
 
-        assert isinstance(layer, nn.Conv2d), "LoRAConv2d only works with nn.Conv2d" 
-        self.rank = rank 
-        self.lora_alpha = lora_alpha
-        self.kernel_size = layer.kernel_size
-        self.stride = layer.stride
-        self.padding = layer.padding
-        self.lora_dtype = lora_dtype
+        ### Disable Gradients on Linear Layer Weights/Biases ###
+        self.weight.requires_grad = False
+        
+        ### Create Our Low Rank Matricies (Flatten Kernel Weights and Output Rank) ###
+        self.lora_A = nn.Parameter(torch.zeros(rank, self.in_channels, *self.kernel_size, dtype=lora_dtype))
+        self.lora_B = nn.Parameter(torch.zeros(rank, self.out_channels, dtype=lora_dtype))
 
-        ### Store the Layer ###
-        self.orig_conv = layer
-        self.weight = layer.weight
-        self.bias = layer.bias
+        ### Initialize lora_A. In the paper they use normal, but in the ###
+        ### implementation they use kaiming_uniform_, so lets use that! ###
+        nn.init.kaiming_normal_(self.lora_A, a=math.sqrt(5))
 
-        ### Change Gradient Flag ###
-        self.orig_conv.weight.requires_grad = False
-        self.orig_conv.bias.requires_grad = b_grad
+    def _load_pretrained_weights(self, state_dict):
+        self.weight.data = state_dict["weight"]
+        if "bias" in state_dict.keys():
+            self.bias.data = state_dict["bias"]
 
-        ### Convolution Weight Shape ###
-        self.out_channels, self.in_channels, self.kernel_height, self.kernel_width = self.orig_conv.weight.shape
-
-        ### Create our Low Rank Matricies (Flatten kernel weights and output rank) ###
-        self.lora_A = nn.Parameter(torch.zeros(rank, self.in_channels, self.kernel_height, self.kernel_width, dtype=lora_dtype), requires_grad=True)
-        self.lora_B = nn.Parameter(torch.zeros(rank, self.out_channels, dtype=lora_dtype), requires_grad=True)
-
-        ### Initialize lora_A w/ gaussian, B stays as 0s (as described in paper) ###
-        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
-
-        ### Create LoRA Dropout ###
-        self.lora_dropout = nn.Dropout(lora_dropout) if lora_dropout > 0 else lambda x: x
-
-        ### Compute Scaling for LoRA ###
-        self.scaling = self.lora_alpha / self.rank**0.5 if use_rslora else self.lora_alpha / self.rank
-
-    def __repr__(self):
-        return f"LoRAConv2D(in_channels={self.in_channels}, out_channels={self.out_channels}, rank={self.rank}, kernel_size={self.kernel_size})"
-    
     def _merge_weights(self):
+
         """
         xW^T + xAB = x(W^T + AB)
         """
@@ -225,41 +282,44 @@ class LoRAConv2d(nn.Module):
         lora_mult = (self.lora_B.T @ lora_A_flatten) * self.scaling
         
         ### Place Back into Conv Weight Shape: (ou_chan x in_chan*k_h*k_w) -> (out_chan x in_chan x k_h x k_w) ###
-        lora_mult = lora_mult.reshape(self.out_channels, self.in_channels, self.kernel_height, self.kernel_width)
+        lora_mult = lora_mult.reshape(self.out_channels, self.in_channels, *self.kernel_size)
 
         ### Merge ###
-        merged_weight = self.orig_conv.weight.data + lora_mult
+        merged_weight = self.weight.data + lora_mult
 
-        merged_layer = nn.Conv2d(
-            in_channels=self.in_channels,
-            out_channels=self.out_channels, 
-            kernel_size=(self.kernel_height, self.kernel_width),
-            stride=self.stride, 
-            padding=self.padding
-        )
-
-        merged_layer.weight.data = merged_weight
-
+        ### Store Weights ###
+        state_dict = {"weight": merged_weight}
         if self.bias is not None:
-            merged_layer.bias.data = self.bias
+            state_dict["bias"] = self.bias
 
-        return merged_layer
+        ### Load Weights to New Linear Layer ###
+        merged_conv = nn.Conv2d(self.in_channels, 
+                                self.out_channels,
+                                kernel_size=self.kernel_size, 
+                                stride=self.stride, 
+                                padding=self.padding,
+                                bias=True if self.bias is not None else False)
+        
+        merged_conv.load_state_dict(state_dict)
+
+        return merged_conv
 
     def forward(self, x):
-        
-        ### Cast x to LoRA Dtype ###
-        x = x.to(self.lora_dtype)
 
-        ### Output W/ Original Weights (No Gradients) ###
-        orig_output = self.orig_conv(x)
+        ### Output W/ Original Weights ###
+        orig_layer_out = F.conv2d(input=x, 
+                                  weight=self.weight, 
+                                  bias=self.bias,
+                                  stride=self.stride, 
+                                  padding=self.padding)
         
-        ### Low Rank Output (With Gradients) ###
+        ### Low Rank Outputs ###
         lora_rank_A_output = F.conv2d(input=x, 
                                       weight=self.lora_A, 
                                       bias=None,
                                       stride=self.stride, 
                                       padding=self.padding)
-        
+
         ### Permute to have rank_channels last (B x H x W x rank) ###
         lora_rank_A_output = lora_rank_A_output.permute(0,2,3,1)
         
@@ -268,196 +328,153 @@ class LoRAConv2d(nn.Module):
 
         ### Return Back to Image Shape (B x out_channels x H x W) ###
         low_rank_output = low_rank_output.permute(0,3,1,2)
-      
+
         ### Sum Outputs ###
-        output = orig_output + low_rank_output
-      
+        output = orig_layer_out + low_rank_output
+
         return output
+
+@dataclass
+class LoraConfig:
     
-class LoRAModel(nn.Module):
+    rank: int = 8
+    target_modules: Optional[Union[list[str], str]] = None
+    exclude_modules: Optional[Union[list[str], str]] = None
+    lora_alpha: float = 8.0
+    lora_dropout: float = 0.0
+    bias: Literal["none", "all", "lora_only"] = "none"
+    use_rslora: bool = True
+    lora_dtype: Literal["fp32", "fp16", "bf16"] = "fp32"
 
-    def __init__(self, 
-                 model, 
-                 rank=16, 
-                 lora_alpha=1.0,
-                 use_rslora=True,
-                 target_modules=None,
-                 exclude_modules=None,
-                 lora_dropout=0.0,
-                 freeze_non_lora=True,
-                 initializer_range=1.0,
-                 b_grad=True,
-                 lora_dtype=torch.float32):
-        
-        super().__init__()
-        
+dtype_precision_dict = {"fp32": torch.float32, 
+                        "fp16": torch.float16, 
+                        "bf16": torch.bfloat16}
+
+class LoraModel(nn.Module):
+
+    def __init__(self, model, config):
+        super(LoraModel, self).__init__()
+
         self.model = model
-        self.rank = rank
-        self.lora_alpha = lora_alpha
-        self.use_rslora = use_rslora
-        self.lora_dropout = lora_dropout
-        self.initializer_range = initializer_range
-        self.b_grad = b_grad
-        self.lora_dtype = lora_dtype
-        self.freeze_non_lora = freeze_non_lora
-        self.target_modules = target_modules
-        self.exclude_modules = exclude_modules
+        self.config = config
 
-        if self.target_modules is not None:
-            assert isinstance(self.target_modules, list), "Make sure you pass in target modules as a list!"
-        else:
-            self.target_modules = []
+        ### Ensure Taraget Modules/Exclude Modules are Lists ###
+        if self.config.target_modules is None:
+            self.config.target_modules = []
+        elif isinstance(self.config.target_modules, str):
+            self.config.target_modules = [self.config.target_modules]
+        if self.config.exclude_modules is None:
+            self.config.exclude_modules = []
+        elif isinstance(self.config.exclude_modules, str):
+            self.config.exclude_modules = [self.config.exclude_modules]
 
-        if self.exclude_modules is not None:
-            assert isinstance(self.exclude_modules, list), "Make sure you pass in exclude modules as a list!"
-        else:
-            self.exclude_modules = []
+        ### Disable All Grads in Model ###
+        self._disable_all_grads()
 
-        ### Compute Number of Trainable Parameters Before LoRA ###
-        before_params = self._compute_trainable_parameters()
+        ### Apply LoRA to Target Modules ###
+        self._apply_lora(model)
 
-        ### Change Layers to LoRA ###
-        self._apply_lora(self.model)
-
-        ### Compute Number of Trainable Parameters After LoRA ###
-        after_params = self._compute_trainable_parameters()
-
-        print(f"Initial Parameters : {before_params} || LoRA Parameters : {after_params} || Trainable Proportion : {round(after_params*100/before_params, 2)}%")
+        ### Toggle Bias Gradients ###
+        self._toggle_bias_grad()
 
     def _apply_lora(self, module):
-    
-        ### Recursively Go Through Model and Find Linear Layers ###
+
+        ### Recursively Go Through Model and Find Layers To Convert ###
         for name, child in module.named_children():
             
-            ### If name is in exclude_modules, dont do anything. Dont convert to LoRA and dont change requires_grad ###      
-            if name in self.exclude_modules:  
-                convert_to_lora = False
-                exclude_from_changes = True
-
-            else:
-
-                exclude_from_changes = False
-                if (name in self.target_modules):
-                    convert_to_lora = True
-                else:
-                    convert_to_lora = False
-       
-            ### If a child of this module is a linear layer, update with our LoRALinear ###
-            if isinstance(child, nn.Linear):
+            ### Check if Layer is Included to Convert to LoRA ###
+            if any([inc in name for inc in self.config.target_modules]):
                 
-                if convert_to_lora:
+                ### Convert Linear to LoRA ###
+                if isinstance(child, nn.Linear):
 
-                    ### Create LoRA Layer for This Linear Layer ###
-                    lora_layer = LoRALinear(layer=child,
-                                            rank=self.rank,
-                                            lora_alpha=self.lora_alpha, 
-                                            use_rslora=self.use_rslora, 
-                                            lora_dropout=self.lora_dropout,
-                                            b_grad=self.b_grad,
-                                            lora_dtype=self.lora_dtype)
+                    new_layer = LoRALinear(in_features=child.in_features, 
+                                           out_features=child.out_features, 
+                                           bias=True if child.bias is not None else False,
+                                           rank=self.config.rank,
+                                           lora_alpha=self.config.lora_alpha, 
+                                           lora_dropout=self.config.lora_dropout, 
+                                           use_rslora=self.config.use_rslora,
+                                           lora_dtype=dtype_precision_dict[self.config.lora_dtype])
+
+                    new_layer._load_pretrained_weights(child.state_dict())
+                    setattr(module, name, new_layer)
+
+                elif isinstance(child, nn.Conv2d):
+
+                    new_layer = LoRAConv2d(in_channels=child.in_channels, 
+                                           out_channels=child.out_channels, 
+                                           kernel_size=child.kernel_size, 
+                                           stride=child.stride, 
+                                           padding=child.padding, 
+                                           bias=True if child.bias is not None else False,
+                                           rank=self.config.rank, 
+                                           lora_alpha=self.config.lora_alpha, 
+                                           lora_dropout=self.config.lora_dropout, 
+                                           use_rslora=self.config.use_rslora,
+                                           lora_dtype=dtype_precision_dict[self.config.lora_dtype])
                     
-                    ### Replace the linear layer (identified by its name) in this module with our lora layer ###
-                    setattr(module, name, lora_layer)
-                
-                ### If this is a module we can change (exlude_from_change flag) and we want to freeze all non-lora params (freeze_non_lora flag) ##
-                ### then we can do that here! ###
-                elif not exclude_from_changes and self.freeze_non_lora:
+                    new_layer._load_pretrained_weights(child.state_dict())
+                    setattr(module, name, new_layer)
 
-                    child.weight.requires_grad = False
-                    child.bias.requires_grad = False
+                elif isinstance(child, nn.Embedding):
 
-            ### If its an Embedding Layer then We Can Replace With Our Own LoraEmbedding ###
-            elif isinstance(child, nn.Embedding):
-                
-                if convert_to_lora:
-
-                    lora_layer = LoRAEmbedding(layer=child, 
-                                               rank=self.rank, 
-                                               lora_alpha=self.lora_alpha, 
-                                               use_rslora=self.use_rslora, 
-                                               padding_idx=child.padding_idx)
+                    new_layer = LoRAEmbedding(num_embeddings=child.num_embeddings, 
+                                              embedding_dim=child.embedding_dim, 
+                                              rank=self.config.rank, 
+                                              lora_alpha=self.config.lora_alpha, 
+                                              lora_dropout=self.config.lora_dropout, 
+                                              use_rslora=self.config.use_rslora,
+                                              lora_dtype=dtype_precision_dict[self.config.lora_dtype])
                     
-                    ### Replace the embedding layer (identified by its name) in this module with our lora layer ###
-                    setattr(module, name, lora_layer)
+                    new_layer._load_pretrained_weights(child.state_dict())
+                    setattr(module, name, new_layer)
 
-                elif not exclude_from_changes and self.freeze_non_lora:
+            ### If there are more children, Recurse into them ###
+            if len(list(child.children())) > 0:
+                self._apply_lora(child)
 
-                    child.weight.requires_grad = False
+    def _toggle_bias_grad(self):
 
-            elif isinstance(child, nn.Conv2d):
-
-                if convert_to_lora:
-
-                    lora_layer = LoRAConv2d(layer=child,
-                                            rank=self.rank, 
-                                            lora_alpha=self.lora_alpha, 
-                                            use_rslora=self.use_rslora, 
-                                            lora_dropout=self.lora_dropout, 
-                                            b_grad=self.b_grad,
-                                            lora_dtype=self.lora_dtype)
-                    
-                    setattr(module, name, lora_layer)
-
-                elif not exclude_from_changes and self.freeze_non_lora:
-
-                    child.weight.requires_grad = False
-                    child.bias.requires_grad = False
-
-
-            ### Else, Dig Deeper Into the Module To Search For Linear Layers (as long as module wasnt selected to be exluded) ###
-            else:
-                
-                dig_deeper = True
-                if name in self.exclude_modules:
-                    dig_deeper = False
-
-                if dig_deeper:                    
-                    self._apply_lora(child)
-
-    def _merge_weights(self, module):
-
-        for name, child in module.named_children():
+        for name, param in self.model.named_parameters():
             
-            if isinstance(child, (LoRALinear, LoRAEmbedding, LoRAConv2d)):
-                
-                ### Compute Merged Layer ###
-                merged_layer = child._merge_weights()
-                
-                ### Replace LoRA Layer with Merged Layer ###
-                setattr(module, name, merged_layer)
+            ### Dont want to disable gradients for Excluded Layers ###
+            if not any([ex in name for ex in self.config.exclude_modules]):
+                if ".bias" in name:
+                    if self.config.bias == "none":
+                        param.requires_grad = False
+                    elif self.config.bias == "all":
+                        param.requires_grad = True
+                    elif (self.config.bias == "lora_only") and ("lora_" in name):
+                        param.requires_grad = True
 
-            ### Continue Recursively Going through Model ###
-            else:
-
-                self._merge_weights(child)
-
-    def save_model(self, path, save_trainable_only=True, merge_weights=False):
+    def _disable_all_grads(self):
         
-        if not merge_weights:
-            state_dict = {name: param for name, param in self.named_parameters() \
-                        if (param.requires_grad and save_trainable_only)}
+        for name, param in self.model.named_parameters():
 
-        else:
-
-            self._merge_weights(self.model)
-
-            state_dict = {name: param for name, param in self.named_parameters()}
-
-        save_file(state_dict, path)
-        
-    def load_model(self, path):
-        
-        state_dict = load_file(path)
-        self.load_state_dict(state_dict=state_dict, strict=False)
+            ### If not in exclude modules, turn off gradients ###
+            if not any([ex in name for ex in self.config.exclude_modules]):
+                param.requires_grad = False
 
     def _compute_trainable_parameters(self):
 
-        total = 0
-        for param in self.parameters():
+        total_learnable_params = 0
+        for param in self.model.parameters():
             if param.requires_grad:
-                total += param.numel()
+                total_learnable_params += param.numel()
 
-        return total
+        return total_learnable_params
+
+
+if __name__ == "__main__":
+
+    from transformers import AutoModelForImageClassification
+
+    model = AutoModelForImageClassification.from_pretrained("google/vit-base-patch16-224")
+    lora_config = LoraConfig(exclude_modules="classifier", 
+                             target_modules=["projection", "query", "key", "value", "dense"])
+    lora_model = LoraModel(model, lora_config)
     
-    def forward(self, *inputs, **kwargs):
-        return self.model(*inputs, **kwargs)
+    for name, param in lora_model.named_parameters():
+        if "bias" in name:
+            print(name, param.requires_grad)
