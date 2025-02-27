@@ -381,6 +381,12 @@ class LoraModel(nn.Module):
 
         return self.lora_model(*inputs, **kwargs)
     
+    def _exclude_module_name_check(self, name):
+        return any([ex in name for ex in self.config.exclude_modules])
+    
+    def _target_module_name_check(self, name):
+        return any([tgt in name for tgt in self.config.target_modules])
+    
     def _apply_lora(self, module):
 
         """
@@ -391,7 +397,7 @@ class LoraModel(nn.Module):
         for name, child in module.named_children():
             
             ### Check if Layer is Included to Convert to LoRA ###
-            if any([inc in name for inc in self.config.target_modules]):
+            if self._target_module_name_check(name):
                 
                 ### Convert Linear to LoRA ###
                 if isinstance(child, nn.Linear):
@@ -451,13 +457,13 @@ class LoraModel(nn.Module):
         for name, param in self.lora_model.named_parameters():
             
             ### Dont want to disable gradients for Excluded Layers ###
-            if not any([ex in name for ex in self.config.exclude_modules]):
+            if not self._exclude_module_name_check(name):
                 if ".bias" in name:
                     if self.config.bias == "none":
                         param.requires_grad = False
                     elif self.config.bias == "all":
                         param.requires_grad = True
-                    elif (self.config.bias == "lora_only") and ("lora_" in name):
+                    elif (self.config.bias == "lora_only") and self._target_module_name_check(name):
                         param.requires_grad = True
 
     def _disable_all_grads(self):
@@ -469,7 +475,7 @@ class LoraModel(nn.Module):
         for name, param in self.lora_model.named_parameters():
 
             ### If not in exclude modules, turn off gradients ###
-            if not any([ex in name for ex in self.config.exclude_modules]):
+            if not self._exclude_module_name_check(name):
                 param.requires_grad = False
 
     def _compute_trainable_parameters(self):
