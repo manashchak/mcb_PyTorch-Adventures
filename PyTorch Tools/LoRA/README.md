@@ -62,7 +62,7 @@ We will be finetuning ViT on the Foods dataset with the same settings, only chan
 - lora_alpha: 8
 - use_rslora = True
 
-**Note**: LoRA Was applied to all QKV Layers, the Dense Layer found in the Feed Forward Module and the convolutional projection layer
+**Note**: LoRA Was applied to all QKV Layers and the Dense Layer found in the Feed Forward Module
 
 | Model              | Learnable Params |  %Trainable | Accuracy |
 | :---------------- |  ----: |----: |----: |
@@ -97,6 +97,6 @@ To further drive down the memory cost, we can use parameter quantization, which 
 
 ## PEFT
 
-The best way to do this is [PEFT](https://github.com/huggingface/peft), an incredble package by Huggingface 🤗! 
+The best way to do this is [PEFT](https://github.com/huggingface/peft), an incredble package by Huggingface 🤗! My code is not battle tested at all and should be taken with a grain of salt, again this is all about learning!
 
 
