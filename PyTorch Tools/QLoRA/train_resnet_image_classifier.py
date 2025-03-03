@@ -1,50 +1,54 @@
 import os
+os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
+
 import numpy as np
 import torch
 import torch.nn as nn
 from tqdm import tqdm
 from torch.utils.data import DataLoader
+from torchvision import transforms
 from accelerate import Accelerator
 from torchmetrics import Accuracy
 from datasets import load_dataset
 from safetensors.torch import save_file
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, \
-    DataCollatorWithPadding, get_cosine_schedule_with_warmup
+from transformers import AutoModelForImageClassification, AutoImageProcessor, \
+    DefaultDataCollator, get_cosine_schedule_with_warmup
+from accelerate import DistributedDataParallelKwargs
 
 from qlora import QLoraConfig, QLoraModel
 
 import warnings 
 warnings.filterwarnings("ignore")
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 
 ##########################
 ### TRAINING ARGUMENTS ###
 ##########################
-experiment_name = "LoRATextClassifier"
-wandb_run_name = "bert_lora_classifier"
+experiment_name = "QLoRAImageClassifier"
+wandb_run_name = "vit_qlora_classifier"
 working_directory = "work_dir"
-epochs = 3
+epochs = 25
 batch_size = 64
-learning_rate = 1e-5
+learning_rate = 1e-3
 weight_decay = 0.001
 warmup_steps = 100
 max_grad_norm = 1.0
 num_workers = 32
 gradient_checkpointing = False
 log_wandb = False
-hf_dataset = "imdb"
-hf_model_name = "FacebookAI/roberta-base"
+hf_dataset = "food101"
+hf_model_name = "microsoft/resnet-50"
 
 ######################
 ### LORA ARGUMENTS ###
 ######################
 use_lora = True
 train_head_only = False
-target_modules = ["query", "key", "value"]
+target_modules = ["convolution"]
 exclude_modules = ["classifier"] # Dont do LoRA on untrained classifier
-rank = 8
-lora_alpha = 8
+rank = 32
+lora_alpha = 32
 use_rslora = True
 bias = "none"
 lora_dropout = 0.1
@@ -61,34 +65,42 @@ accelerator = Accelerator(project_dir=path_to_experiment,
 if log_wandb:
     accelerator.init_trackers(experiment_name, init_kwargs={"wandb": {"name": wandb_run_name}})
 
-########################
-### TOKENIZE DATASET ###
-########################
-dataset = load_dataset(hf_dataset)
-labels = dataset["train"].features["label"].names
-
-tokenizer = AutoTokenizer.from_pretrained(hf_model_name)
-def preprocess_function(examples):
-    return tokenizer(examples["text"], truncation=True)
-
-with accelerator.main_process_first():
-    dataset = dataset.map(preprocess_function, batched=True, remove_columns="text") 
 
 ###########################
 ### Prepare DataLoaders ###
 ###########################
+dataset = load_dataset(hf_dataset)
+labels = dataset["train"].features["label"].names
 
-data_collator = DataCollatorWithPadding(tokenizer=tokenizer, padding=True, max_length=512)
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
+train_transforms = transforms.Compose(
+    [
+        transforms.RandomResizedCrop(size=(224,224)), 
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+    ]
+)
 
-trainloader = DataLoader(dataset["train"], batch_size=batch_size, collate_fn=data_collator, shuffle=True, num_workers=num_workers)
-testloader = DataLoader(dataset["test"], batch_size=batch_size, collate_fn=data_collator, shuffle=False, num_workers=num_workers)
+def transforms(examples):
+    examples["pixel_values"] = [train_transforms(img.convert("RGB")) for img in examples["image"]]
+    del examples["image"]
+    return examples
+
+dataset = dataset.with_transform(transforms)
+
+collate_fn = DefaultDataCollator()
+trainloader = DataLoader(dataset["train"], batch_size=batch_size, collate_fn=collate_fn, shuffle=True, num_workers=num_workers)
+testloader = DataLoader(dataset["validation"], batch_size=batch_size, collate_fn=collate_fn, shuffle=False, num_workers=num_workers)
 
 #######################
 ### Load LoRA Model ###
 #######################
-model = AutoModelForSequenceClassification.from_pretrained(hf_model_name, 
-                                                           num_labels=len(labels), 
-                                                           ignore_mismatched_sizes=True)
+
+model = AutoModelForImageClassification.from_pretrained(hf_model_name, 
+                                                        num_labels=len(labels), 
+                                                        ignore_mismatched_sizes=True)
 
 if gradient_checkpointing:
     model.gradient_checkpointing_enable()
@@ -130,10 +142,10 @@ optimizer = torch.optim.AdamW(params_to_train, lr=learning_rate, weight_decay=we
 ########################
 ### DEFINE SCHEDULER ###
 ########################
-
 scheduler = get_cosine_schedule_with_warmup(optimizer=optimizer, 
                                             num_warmup_steps=warmup_steps * accelerator.num_processes, 
                                             num_training_steps=epochs * len(trainloader) * accelerator.num_processes)
+
 
 ##########################
 ### Prepare Everything ###
@@ -161,20 +173,23 @@ for epoch in range(epochs):
 
     model.train()
     for batch in trainloader:
-                    
-        ### Pass Through Model ###
-        pred = model(**batch)
 
-        ### Grab Loss ###
-        loss = pred["loss"]
+        ### Move Data to Correct GPU ###
+        images, targets = batch["pixel_values"].to(accelerator.device), batch["labels"].to(accelerator.device)
+
+        ### Pass Through Model ###
+        pred = model(images)["logits"]
+
+        ### Compute and Store Loss ##
+        loss = loss_fn(pred, targets)
 
         ### Compute and Store Accuracy ###
-        predicted = pred["logits"].argmax(axis=1)
-        accuracy = accuracy_fn(predicted, batch["labels"])
+        predicted = pred.argmax(axis=1)
+        accuracy = accuracy_fn(predicted, targets)
 
-        ### Compute Gradients ###
+        ### Compute Gradients ###   
         accelerator.backward(loss)
-
+    
         ### Clip Gradients ###
         accelerator.clip_grad_norm_(model.parameters(), max_grad_norm)
         
@@ -198,16 +213,16 @@ for epoch in range(epochs):
 
     model.eval()
     for batch in tqdm(testloader, disable=not accelerator.is_local_main_process):
-
+        images, targets = batch["pixel_values"].to(accelerator.device), batch["labels"].to(accelerator.device)
         with torch.no_grad():
-            pred = model(**batch)
+            pred = model(images)["logits"]
 
-        ### Grab Loss ###
-        loss = pred["loss"]
+        ### Compute Loss ###
+        loss = loss_fn(pred, targets)
 
-        ### Compute and Store Accuracy ###
-        predicted = pred["logits"].argmax(axis=1)
-        accuracy = accuracy_fn(predicted, batch["labels"])
+        ### Computed Accuracy ###
+        predicted = pred.argmax(axis=1)
+        accuracy = accuracy_fn(predicted, targets)
 
         ### Gather across GPUs ###
         loss_gathered = accelerator.gather_for_metrics(loss)
@@ -235,12 +250,12 @@ for epoch in range(epochs):
 accelerator.wait_for_everyone()
 
 if use_lora:
-    accelerator.unwrap_model(model).save_model(os.path.join(working_directory, experiment_name, "imdb_adapter_checkpoint.safetensors"))
-    accelerator.unwrap_model(model).save_model(os.path.join(working_directory, experiment_name, "imdb_merged_checkpoint.safetensors"), merge_weights=True)
+    accelerator.unwrap_model(model).save_model(os.path.join(working_directory, experiment_name, "food_adapter_checkpoint.safetensors"))
+    accelerator.unwrap_model(model).save_model(os.path.join(working_directory, experiment_name, "food_merged_checkpoint.safetensors"), merge_weights=True)
 elif not use_lora and train_head_only:
-    save_file(accelerator.unwrap_model(model).state_dict(), os.path.join(working_directory, experiment_name, "imdb_headonly_checkpoint.safetensors"))
+    save_file(accelerator.unwrap_model(model).state_dict(), os.path.join(working_directory, experiment_name, "food_headonly_checkpoint.safetensors"))
 else:
-    save_file(accelerator.unwrap_model(model).state_dict(), os.path.join(working_directory, experiment_name, "imdb_fulltrain_checkpoint.safetensors"))
+    save_file(accelerator.unwrap_model(model).state_dict(), os.path.join(working_directory, experiment_name, "food_fulltrain_checkpoint.safetensors"))
 
 ### End Training for Trackers to Exit ###
 accelerator.end_training()

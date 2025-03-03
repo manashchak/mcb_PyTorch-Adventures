@@ -84,7 +84,7 @@ class QLoRALinear(bnn.Linear4bit, LoRALayerBase):
                  **kwargs):
         
         ### Initialize Inherited Classes ###
-        bnn.Linear4bit.__init__(self, in_features, out_features, bias=False, **kwargs)
+        bnn.Linear4bit.__init__(self, in_features, out_features, bias=bias, **kwargs)
         LoRALayerBase.__init__(self,
                                rank=rank, 
                                lora_alpha=lora_alpha, 
@@ -93,12 +93,10 @@ class QLoRALinear(bnn.Linear4bit, LoRALayerBase):
         
         assert rank > 0, "If Rank is 0, Why are you doing LoRA?"
 
-        ### Manually Define Bias and Disable Gradients ###
-        if bias:
-            self.bias = nn.Parameter(torch.zeros(out_features))
-
         ### Disable Gradients on Linear Layer Weights ###
         self.weight.requires_grad = False
+        if self.bias is not None:
+            self.bias.requires_grad = False
         
         ### Define LoRA Layers (shape is [in_features, out_features] ###
         ### Normally Weight matricies are [out_features, in_features] ###
@@ -109,7 +107,7 @@ class QLoRALinear(bnn.Linear4bit, LoRALayerBase):
         ### Initialize lora_A. In the paper they use normal, but in the ###
         ### implementation they use kaiming_uniform_, so lets use that! ###
         nn.init.kaiming_normal_(self.lora_A, a=math.sqrt(5))
-
+        
     def _merge_weights(self):
 
         """
@@ -143,10 +141,6 @@ class QLoRALinear(bnn.Linear4bit, LoRALayerBase):
         
         ### Pass Through Original Weights ###
         orig_layer_out = bnn.Linear4bit.forward(self, x)
-
-        ### Add Bias if Available ###
-        if self.bias is not None:
-            orig_layer_out = orig_layer_out + self.bias
 
         ### LoRA Layers ###
         lora_mult = (self.lora_A @ self.lora_B) * self.scaling
@@ -285,6 +279,8 @@ class QLoRAConv2d(bnn.Linear4bit, LoRALayerBase):
 
         ### Disable Gradients on Linear Layer Weights/Biases ###
         self.weight.requires_grad = False
+        if self.bias is not None:
+            self.bias.requires_grad = False
         
         ### Create Our Low Rank Matricies (Flatten Kernel Weights and Output Rank) ###
         self.lora_A = nn.Parameter(torch.zeros(rank, self.in_channels, *self.kernel_size))
