@@ -3,6 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
+from torchvision.datasets import MNIST
+from torch.utils.data import DataLoader
+
 class Layer:
     def forward(self, x):
         raise NotImplementedError
@@ -98,7 +101,59 @@ class MSELoss:
         grad = -(2/batch_size) * (self.y_true - self.y_pred)
 
         return grad
-    
+
+class SoftMax:
+
+    def forward(self, x):
+        
+        self.x = x
+
+        shifted_x = x - np.max(x, axis=-1, keepdims=True)
+
+        exp_x = np.exp(shifted_x)
+
+        probs = exp_x / np.sum(exp_x, axis=-1, keepdims=True)
+
+        return probs
+
+    def backward(self, output_grad):
+        
+        probs = self.forward(self.x)
+
+        gradient = np.zeros_like(probs)
+
+        batch_size = len(self.x)
+
+        for i in range(batch_size):
+
+            sample_probs = probs[i]
+            
+            j = -sample_probs.reshape(-1,1) * sample_probs.reshape(1,-1)
+            j[np.diag_indices(j.shape[0])] = sample_probs * (1 - sample_probs)
+
+            a = output_grad[i] @ j
+            
+            gradient[i] = a
+        
+        return gradient
+
+class CrossEntropyLoss:
+
+    def forward(self, y_true, y_pred):
+
+        self.y_true = y_true
+        self.y_pred = y_pred
+
+        loss = -np.sum(y_true * np.log(y_pred)) / y_true.shape[0]
+        
+        return loss
+        
+    def backward(self):
+        
+        grad = - self.y_true / self.y_pred
+
+        return grad
+
 class Sigmoid:
     def forward(self, x):
 
@@ -116,6 +171,17 @@ class Sigmoid:
         
         return input_grad
 
+class ReLU:
+    def forward(self, x):
+        self.x = x
+        return np.clip(x, a_min=0, a_max=None)
+    
+    def backward(self, output_grad):
+        
+        grad = np.zeros_like(self.x)
+        grad[self.x > 0] = 1
+        
+        return grad * output_grad
     
 class NeuralNetwork:
     
@@ -150,6 +216,26 @@ class NeuralNetwork:
                     parameters.append(layer.bias)
         return parameters
     
+    def __repr__(self):
+        # Start by printing the class name for the whole model
+        model_repr = "NeuralNetwork(\n"
+        
+        # Print each layer's class name and parameters
+        for layer in self.layers:
+            if isinstance(layer, Linear):
+                model_repr += f"  Linear(in_features={layer.in_features}, out_features={layer.out_features}, bias={layer.bias is not None})\n"
+            elif isinstance(layer, Sigmoid):
+                model_repr += "  Sigmoid()\n"
+            elif isinstance(layer, ReLU):
+                model_repr += "  ReLU()\n"
+            elif isinstance(layer, SoftMax):
+                model_repr += "  SoftMax()\n"
+        
+        # Close the model string representation
+        model_repr += ")"
+        
+        return model_repr
+    
 class SGD:
     def __init__(self, parameters, lr):
         self.parameters = parameters
@@ -164,225 +250,127 @@ class SGD:
         for param in self.parameters:
             param.grad = None
 
+if __name__ == "__main__":
+
+    network = NeuralNetwork()
+
+    network.add(Linear(784,512))
+    network.add(ReLU())
+    network.add(Linear(512,256))
+    network.add(ReLU())
+    network.add(Linear(256,128))
+    network.add(ReLU())
+    network.add(Linear(128,10))
+    network.add(SoftMax())
+
+    print(network)
+
+    ### Prep Dataset ###
+    train_dataset = MNIST("../../data", train=True, download=True)
+    test_dataset = MNIST("../../data", train=True, download=True)
+
+    def collate_fn(batch):
+ 
+        ### Prep and Scale Images ###
+        images = np.concatenate([np.array(i[0]).reshape(1,784)for i in batch]) / 255
+
+        ### One Hot Encode Label (MNIST only has 10 classes) ###
+        labels = [i[1] for i in batch]
+        labels = np.eye(10)[labels]
+
+        return images, labels
     
-x_train = np.arange(-10,10,0.1).reshape(-1,1)
-y_train = 3*x_train**2 + 2 + np.random.normal(scale=5, size=(x_train.shape[0], x_train.shape[1]))
+    trainloader = DataLoader(train_dataset, batch_size=32, collate_fn=collate_fn)
+    testloader = DataLoader(test_dataset, batch_size=32, collate_fn=collate_fn)
+    loss_func = CrossEntropyLoss()
+    optimizer = SGD(network.parameters(), lr=1e-3)
 
-network = NeuralNetwork()
-network.add(Linear(1,32))
-network.add(Sigmoid())
-network.add(Linear(32,64))
-network.add(Sigmoid())
-network.add(Linear(64,64))
-network.add(Sigmoid())
-network.add(Linear(64,32))
-network.add(Sigmoid())
-network.add(Linear(32,1))
+    training_iterations = 2500
 
-loss_func = MSELoss()
-optimizer = SGD(network.parameters(), 1e-3)
+    all_train_losses = []
+    all_train_accs = []
+    all_test_losses = []
+    all_test_accs = []
 
-losses = []
-for idx in tqdm(range(25000)):
-    output = network(x_train)
-
-    loss = loss_func.forward(output, y_train)
-    loss_grad = loss_func.backward()
-    network.backward(loss_grad)
-    optimizer.step()
-    optimizer.zero_grad()
-    losses.append(loss)
-
-    if idx % 250 == 0:
-        print("Loss:", loss)
-pred = network(x_train)
-
-plt.plot(y_train, label="truth")
-plt.plot(pred, label="pred")
-plt.legend()
-plt.show()
-
-plt.plot(losses)
-plt.show()
-
-# import numpy as np
-# import matplotlib.pyplot as plt
-# from tqdm import tqdm
-
-
-# class Layer:
-#     def forward(self, x):
-#         raise NotImplementedError
+    num_iters = 0
+    train = True
+    pbar = tqdm(range(training_iterations))
     
-#     def backward(self, grad):
-#         raise NotImplementedError
+    while train:
 
-# import math
-# class Linear(Layer):
-#     def __init__(self, in_features, out_features, bias=True):
-#         self.w = np.random.uniform(
-#                 low=-math.sqrt(1/in_features),
-#                 high=math.sqrt(1/in_features), 
-#                 size=(in_features, out_features)
-#             )
-#         self.w_grad = np.zeros_like(self.w)
-#         self.bias = bias
-#         if bias:
-#             self.b =  np.random.uniform(
-#                 low=-math.sqrt(1/in_features),
-#                 high=math.sqrt(1/in_features), 
-#                 size=(1, out_features)
-#             )
-#             self.b_grad = np.zeros_like(self.b)
-#         else:
-#             self.b = np.zeros((1, out_features))
-#             self.b_grad = None  # No gradient if bias is disabled
+        train_losses = []
+        train_accs = []
+        test_losses = []
+        test_accs = []
 
-#     def forward(self, x):
-#         self.x = x  # Save input for backprop
-#         output = x @ self.w + self.b
-#         return output
+        for images, labels in trainloader:
+            
+            ### Get Outputs from Model ###
+            output = network(images)
+            loss = loss_func.forward(y_pred=output, y_true=labels)
+            loss_grad = loss_func.backward()
 
-#     def backward(self, output_grad):
-#         self.w_grad = self.x.T @ output_grad
-#         if self.bias:
-#             self.b_grad = output_grad.sum(axis=0, keepdims=True)
-#         return output_grad @ self.w.T  # Input gradient
+            ### Compute Gradients in Model ###
+            network.backward(loss_grad)
 
+            ### Update Model ###
+            optimizer.step()
+            optimizer.zero_grad()
 
-# class Sigmoid(Layer):
-#     def forward(self, x):
-#         self.out = 1 / (1 + np.exp(-x))
-#         return self.out
-    
-#     def backward(self, output_grad):
-#         return output_grad * self.out * (1 - self.out)
+            ### Compute Accuracy ###
+            preds = output.argmax(axis=-1)
+            labels = labels.argmax(axis=-1)
+            acc = (preds == labels).sum() / len(preds)
 
+            ### Store Loss for Plotting ###
+            train_losses.append(loss)
+            train_accs.append(acc)
+            
+            ### Eval Loop ###
+            if num_iters % 250 == 0:
 
-# class MSELoss:
-#     def forward(self, y_pred, y_true):
-#         self.y_pred = y_pred
-#         self.y_true = y_true
-#         return np.mean((y_true - y_pred) ** 2)
-    
-#     def backward(self):
-#         return -2 * (self.y_true - self.y_pred) / self.y_pred.shape[0]
+                for images, labels in testloader:
 
+                    ### Get Outputs from Model ###
+                    output = network(images)
+                    loss = loss_func.forward(y_pred=output, y_true=labels)
 
-# class NeuralNetwork:
-#     def __init__(self):
-#         self.layers = []
-    
-#     def add(self, layer):
-#         self.layers.append(layer)
-    
-#     def forward(self, x):
-#         for layer in self.layers:
-#             x = layer.forward(x)
-#         return x
-    
-#     def backward(self, grad):
-#         for layer in reversed(self.layers):
-#             grad = layer.backward(grad)
-    
-#     def parameters(self):
-#         params = []
-#         for layer in self.layers:
-#             if isinstance(layer, Linear):
-#                 params.append((layer.w, layer.w_grad))
-#                 if layer.bias:
-#                     params.append((layer.b, layer.b_grad))
-#         return params
+                    ### Compute Accuracy ###
+                    preds = output.argmax(axis=-1)
+                    labels = labels.argmax(axis=-1)
+                    acc = (preds == labels).sum() / len(preds)
 
+                    ### Store Loss for Plotting ###
+                    test_losses.append(loss)
+                    test_accs.append(acc)
 
-# class SGD:
-#     def __init__(self, network, lr=0.001):
-#         self.network = network
-#         self.lr = lr
-    
-#     def step(self):
-#         for param, grad in self.network.parameters():
-#             param -= self.lr * grad
-    
-#     def zero_grad(self):
-#         for layer in self.network.layers:
-#             if isinstance(layer, Linear):
-#                 layer.w_grad.fill(0)
-#                 if layer.bias:
-#                     layer.b_grad.fill(0)
+                ### Average Up Performance and Store ###
+                train_losses = np.mean(train_losses)
+                train_accs = np.mean(train_accs)
+                test_losses = np.mean(test_losses)
+                test_accs = np.mean(test_accs)
 
+                all_train_losses.append(train_losses)
+                all_train_accs.append(train_accs)
+                all_test_losses.append(test_losses)
+                all_test_accs.append(test_accs)
 
-# class LinearScheduler:
-#     def __init__(self, optimizer, total_steps, warmup_steps):
-#         self.optimizer = optimizer
-#         max_lr = optimizer.lr
-#         self.schedule = np.concatenate([
-#             np.linspace(0, max_lr, warmup_steps),
-#             np.linspace(max_lr, 0, total_steps - warmup_steps)
-#         ])
-#         self.step_count = 0
-    
-#     def step(self):
-#         self.optimizer.lr = self.schedule[self.step_count]
-#         self.step_count += 1
+                print("Training Loss:", train_losses)
+                print("Training Acc:", train_accs)
+                print("Testing Loss:", test_losses)
+                print("Testing Acc:", test_accs)
 
+                ### Reset Lists ###
+                train_losses = []
+                train_accs = []
+                test_losses = []
+                test_accs = []
 
-# def train(network, x_train, y_train, loss_fn, optimizer, scheduler=None, epochs=25000):
-#     losses = []
-#     for epoch in tqdm(range(epochs)):
-#         # Forward pass
-#         y_pred = network.forward(x_train)
-#         loss = loss_fn.forward(y_pred, y_train)
-        
-#         # Backward pass
-#         loss_grad = loss_fn.backward()
-#         network.backward(loss_grad)
-        
-#         # Optimization step
-#         optimizer.step()
-#         if scheduler:
-#             scheduler.step()
-#         optimizer.zero_grad()
-        
-#         losses.append(loss)
-#         if epoch % 250 == 0:
-#             print(f"Epoch {epoch}, Loss: {loss:.6f}")
-    
-#     return losses
+            
+            num_iters += 1
+            pbar.update(1)
 
-
-# if __name__ == "__main__":
-#     # Data
-#     x_train = np.arange(-10, 10, 0.1).reshape(-1, 1)
-#     y_train = 3 * x_train**2 + 2 + np.random.normal(scale=5, size=x_train.shape)
-
-#     # Model
-#     net = NeuralNetwork()
-#     net.add(Linear(1, 32))
-#     net.add(Sigmoid())
-#     net.add(Linear(32, 64))
-#     net.add(Sigmoid())
-#     net.add(Linear(64, 64))
-#     net.add(Sigmoid())
-#     net.add(Linear(64, 32))
-#     net.add(Sigmoid())
-#     net.add(Linear(32, 1))
-
-#     # Training setup
-#     loss_fn = MSELoss()
-#     optimizer = SGD(net, lr=1e-3)
-#     scheduler = LinearScheduler(optimizer, total_steps=25000, warmup_steps=2500)
-
-#     # Train
-#     losses = train(net, x_train, y_train, loss_fn, optimizer, scheduler)
-
-#     # Visualize
-#     y_pred = net.forward(x_train)
-#     plt.plot(y_train, label="Truth")
-#     plt.plot(y_pred, label="Prediction")
-#     plt.legend()
-#     plt.show()
-
-#     plt.plot(losses, label="Loss")
-#     plt.legend()
-#     plt.show()
+            if num_iters >= training_iterations:
+                print("Completed Training")
+                train = False
+                break
