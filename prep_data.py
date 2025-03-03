@@ -44,6 +44,8 @@ if args.catsvdogs:
     for file in path_to_files:
         try:
             img = np.array(Image.open(file))
+            img.verify()
+            img.close()
             if img.shape[-1] != 3:
                 os.remove(file) # Delete image if it doesnt have three channels
         except:
