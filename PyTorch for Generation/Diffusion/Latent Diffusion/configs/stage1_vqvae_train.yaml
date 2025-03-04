@@ -25,7 +25,7 @@ training_args:
   learning_rate: 0.00005                        # VAE Training Learning Rate
   lr_scheduler: constant_with_warmup            # LR Scheduler
   lr_warmup_steps: 1500                         # LR Warmup Steps
-  total_training_iterations: 100000             # Total Training Iterations
+  total_training_iterations: 400000             # Total Training Iterations
   checkpoint_iterations: 5000                   # Checkpoint Iteration Frequency
   per_gpu_batch_size: 8                         # Batch per GPU (multipled by n_gpus in accelerate)
   gradient_accumulations_steps: 1               # Split per GPU batch into accumulation steps
@@ -34,7 +34,6 @@ training_args:
   kl_weight: 0.000001                           # KL Regularization Weight
   num_val_random_samples: 8                     # How many random samples do you want to plot reconstructions for? (max of the set batch per gpu)
   val_img_folder_path: null                     # Folder of images you want to plot during training, if you dont want to random sample
-  val_image_gen_save_path: "src/vqvae_ffhd"       # Where do you want to save the generations?
   val_generation_freq: 250                      # How often do you want to test generations?
   pixelwise_average: True                       # Do you want to average all the pixels (True) or sum pixels and average the batch (False)
   optimizer_beta1: 0.9                          # VAdamW Optimizer Beta1
@@ -42,8 +41,6 @@ training_args:
   optimizer_weight_decay: 0.005                 # AdamW Optimizer Weight Decay
 
   ### Dataset Config ###
-  dataset: ffhd                                # What dataset do you want? "conceptual_captions", "imagenet", "coco", "celeba", "celebahq", "birds", "ffhd"
-  path_to_data: "/mnt/datadrive/data/ffhd/images1024x1024"
   pin_memory: True                              # Do you want to pin_memory on Dataloader?
   num_workers: 32                               # Number of CPU workers for DataLoading
   random_resize: False                          # Do you want to random resize in image transforms. If false, defauls to resize

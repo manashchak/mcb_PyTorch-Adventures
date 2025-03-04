@@ -1,6 +1,8 @@
 accelerate launch stage1_vqvae_trainer.py \
-  --experiment_name "VAETrainer" \
-  --wandb_run_name "vqvae_ffhd" \
-  --working_directory "work_dir/vqvae_ffhd" \
-  --log_wandb \
-  --training_config "configs/stage1_vqvae_train.yaml"
+  --experiment_name "VQVAETrainer" \
+  --wandb_run_name "vqvae_celeba" \
+  --working_directory "work_dir/vqvae_celeba" \
+  --training_config "configs/stage1_vqvae_train.yaml" \
+  --dataset celebahq \
+  --path_to_dataset "/mnt/datadrive/data/CelebAMask-HQ/CelebA-HQ-img" \
+  --path_to_save_gens "src/celebahq_vqvae_gen"

@@ -240,7 +240,9 @@ train = True
 while train:
     
     model.train()
-    discriminator.train()
+
+    if use_disc:
+        discriminator.train()
 
     for i, batch in enumerate(dataloader):
         pixel_values = batch["images"].to(accelerator.device)

@@ -1,4 +1,5 @@
 import os
+os.environ["TORCH_DISTRIBUTED_DEBUG"]="INFO"
 import yaml
 import argparse
 import random
@@ -244,7 +245,9 @@ train = True
 while train:
     
     model.train()
-    discriminator.train()
+    
+    if use_disc:
+        discriminator.train()
 
     for i, batch in enumerate(dataloader):
         pixel_values = batch["images"].to(accelerator.device)
@@ -292,6 +295,7 @@ while train:
                 ### Compute Discriminator Loss (incase we are training the discriminator) ###
                 gen_loss = torch.zeros(size=(), device=pixel_values.device)
                 adaptive_weight = torch.zeros(size=(), device=pixel_values.device)
+
                 if train_disc:
                     gen_loss = -1 * discriminator(reconstructions).mean()
                     last_layer = accelerator.unwrap_model(model).decoder.conv_out.weight
@@ -309,6 +313,7 @@ while train:
                 
                 ### Compute Quantization Loss ###
                 quantization_loss = model_outputs["quantization_loss"].mean()
+ 
                 loss = loss + quantization_loss
                 
                 ### Update Model ###
@@ -338,15 +343,29 @@ while train:
                     
         else:
 
-            disc_optimizer.zero_grad()
-
+            disc_optimizer.zero_grad()      
+   
             with accelerator.accumulate(discriminator):
                 
+                #############
+                #### HACK ###
+                #############
+                ### During DDP Training, when we compute our discriminator loss, we will have 
+                ### passed in our reconstructions from our model. This will lead to a unused_parameters
+                ### bug, because the quantized embeddings have no losses here (we update the quantizer in 
+                ### generator step). This means those parameters will have no gradients and DDP is unhappy
+                ### about that. So as a hack, we will reinfernce our model, grab new constructions, and just
+                ### do it under the flag of no_grad() so no gradients are calculated on our model. We dont really
+                ### care as we are updating our discriminator here not the generator!
+                
+                with torch.no_grad():
+                    reconstructions = model(pixel_values)["reconstruction"]
+
                 ### Hinge Loss ###
                 real = discriminator(pixel_values)
                 fake = discriminator(reconstructions)
                 loss = (F.relu(1 + fake) + F.relu(1 - real)).mean()
-
+ 
                 ### Update Discriminator Model ###
                 accelerator.backward(loss)
                 
