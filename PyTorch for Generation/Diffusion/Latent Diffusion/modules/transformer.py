@@ -327,7 +327,7 @@ class BasicTransformerBlock1D(nn.Module):
         if self.cross_attn_dim is not None:
 
             if context is None:
-                raise Exception("Passing in Context to a Block W/O Cross Attention")
+                raise Exception("Not Passing in Context to a Block W Cross Attention")
             
             norm_hidden_states = self.norm2(x)
             attention_output = self.attn2(norm_hidden_states, 

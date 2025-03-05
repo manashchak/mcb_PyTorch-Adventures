@@ -27,7 +27,7 @@ training_args:
   lr_warmup_steps: 1500                         # LR Warmup Steps
   total_training_iterations: 400000             # Total Training Iterations
   checkpoint_iterations: 500                    # Checkpoint Iteration Frequency
-  per_gpu_batch_size: 12                         # Batch per GPU (multipled by n_gpus in accelerate)
+  per_gpu_batch_size: 12                        # Batch per GPU (multipled by n_gpus in accelerate)
   gradient_accumulations_steps: 1               # Split per GPU batch into accumulation steps
   max_grad_norm: 1.0                            # Max Grad Norm for Clipping
   reconstruction_loss_fn: l1                    # What Reconstruction Loss do you want? ("l1", "l2")

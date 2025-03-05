@@ -39,3 +39,6 @@ class ClassConditionalEmbeddings(nn.Module):
     Class conditional generation (where each class is identified as a index) 
     """
     pass
+
+class TimeEmbedding(nn.Module):
+    pass

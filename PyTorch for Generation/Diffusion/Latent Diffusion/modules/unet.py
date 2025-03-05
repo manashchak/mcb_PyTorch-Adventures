@@ -547,8 +547,8 @@ class UNet2DModel(nn.Module):
         ### Pass through Decoder Blocks ###
         for idx, block in enumerate(self.up_blocks):
             
-            start_idx = idx*(config.unet_residual_layers_per_block+1)
-            end_idx = start_idx + config.unet_residual_layers_per_block+1
+            start_idx = idx*(self.config.unet_residual_layers_per_block+1)
+            end_idx = start_idx + self.config.unet_residual_layers_per_block+1
             selected_skips = residuals[start_idx:end_idx]
 
             x = block(x, selected_skips, time_embed, context, attention_mask)
@@ -559,3 +559,15 @@ class UNet2DModel(nn.Module):
         x = self.conv_out(x)
 
         return x
+
+if __name__ == "__main__":
+
+    from .config import LDMConfig
+
+    config = LDMConfig(text_conditioning=False)
+    model = UNet2DModel(config)
+
+    rand = torch.randn(2,4,32,32)
+    trand = torch.randn(2,1280)
+    out = model(x=rand, time_embed=trand)
+    print(out.shape)
