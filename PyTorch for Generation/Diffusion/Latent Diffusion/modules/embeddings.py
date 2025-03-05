@@ -38,7 +38,27 @@ class ClassConditionalEmbeddings(nn.Module):
     """
     Class conditional generation (where each class is identified as a index) 
     """
-    pass
+    
+    def __init__(self, num_classes, embed_dim, proj_embed_dim):
 
-class TimeEmbedding(nn.Module):
-    pass
+        self.num_classes = num_classes
+        self.embed_dim = embed_dim
+        self.proj_embed_dim = proj_embed_dim
+
+        self.class_embeddings = nn.Embedding(num_classes, embed_dim)
+
+        self.proj = nn.Sequential(
+            
+            nn.Linear(embed_dim, proj_embed_dim), 
+            nn.SiLU(), 
+            nn.Linear(proj_embed_dim, proj_embed_dim), 
+            nn.SiLU()
+
+        )
+
+    def forward(self, x):
+
+        embeddings = self.class_embeddings(x)
+        embeddings = self.proj(embeddings)
+        
+        return embeddings
