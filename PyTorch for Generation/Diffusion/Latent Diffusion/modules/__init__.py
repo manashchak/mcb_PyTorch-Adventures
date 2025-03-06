@@ -7,5 +7,6 @@ from .transformer import Attention, GEGLU, FeedForward, BasicTransformerBlock1D,
 from .unet import DownBlock2D, MidBlock2D, UpBlock2D, UNet2DModel
 from .vae import EncoderBlock2D, DecoderBlock2D, VAEAttentionResidualBlock, \
     VAEEncoder, VAEDecoder, EncoderDecoder, VAE, VQVAE
+from .ldm import LDM
 from .mylpips import LPIPS, DiffToLogits
 from .losses import LpipsDiscriminatorLoss

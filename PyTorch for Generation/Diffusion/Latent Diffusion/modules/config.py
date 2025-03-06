@@ -78,6 +78,9 @@ class LDMConfig:
     beta_start: float = 0.0001
     beta_end: float = 0.02 
 
+    ### Loss Function ###
+    loss_fn = "mse"
+
     ######################
     ### GENERAL CONFIG ###
     ######################

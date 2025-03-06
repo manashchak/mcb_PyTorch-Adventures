@@ -66,6 +66,7 @@ class ClassConditionalEmbeddings(nn.Module):
         self.embed_dim = embed_dim
 
         self.class_embeddings = nn.Embedding(num_classes, embed_dim)
+        self.unconditional_embedding = nn.Parameter(torch.randn(embed_dim))
 
         self.proj = nn.Sequential(
             
