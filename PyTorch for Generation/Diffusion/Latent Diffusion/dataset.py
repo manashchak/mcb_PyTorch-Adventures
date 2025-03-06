@@ -170,6 +170,10 @@ def get_dataset(dataset,
         trainset = conceptual_captions(path_to_data, 
                                        img_transform, 
                                        return_caption=return_caption)
+        
+    else:
+        
+        raise ValueError(f"{dataset} is not Supported")
 
     return trainset
 
@@ -183,6 +187,10 @@ if __name__ == "__main__":
     path_to_birds = "/mnt/datadrive/data/birds/bird_images/images"
     path_to_ffhq = "/mnt/datadrive/data/ffhd/images1024x1024"
 
-    loader = get_dataset(dataset="conceptual_caption", 
+    loader = get_dataset(dataset="conceptual_captions", 
                          path_to_data=path_to_conceptual,
-                         return_caption=False)
+                         return_caption=True)
+    
+    for sample in loader:
+        print(sample)
+        break

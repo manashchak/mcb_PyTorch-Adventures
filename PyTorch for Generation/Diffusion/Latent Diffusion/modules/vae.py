@@ -1,8 +1,135 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .layers import ResidualBlock2D, EncoderBlock2D, DecoderBlock2D
+from .layers import ResidualBlock2D, UpSampleBlock2D, DownSampleBlock2D
 from .transformer import Attention
+
+class EncoderBlock2D(nn.Module):
+
+    """
+    The Encoder block is a stack of Residual Blocks with an optional
+    downsampling layer to reduce the image size
+
+    Args:
+        - in_channels: The number of input channels to the Encoder
+        - out_channels: Number of output channels of the Encoder
+        - dropout_p: The dropout probability in the Residual Blocks
+        - norm_eps: Groupnorm eps
+        - num_residual_blocks: Number of Residual Blocks in the Encoder
+        - time_embed_proj: Do you want to enable time embeddings?
+        - time_embed_dim: Time embedding dimension
+        - add_downsample: Do you want to downsample the image?
+        - downsample_factor: By what factor do you want to downsample
+        - downsample_kernel_size: Kernel size for downsampling convolution
+    """
+
+    def __init__(self, 
+                 in_channels, 
+                 out_channels, 
+                 dropout_p = 0.0,
+                 norm_eps = 1e-6, 
+                 groupnorm_groups = 32, 
+                 num_residual_blocks = 2, 
+                 add_downsample = True,
+                 downsample_factor = 2, 
+                 downsample_kernel_size = 3):
+        
+        super(EncoderBlock2D, self).__init__()
+        
+        self.blocks = nn.ModuleList()
+
+        for i in range(num_residual_blocks):       
+            conv_in_channels = in_channels if i == 0 else out_channels
+            self.blocks.append(
+                ResidualBlock2D(in_channels=conv_in_channels, 
+                                out_channels=out_channels,
+                                groupnorm_groups=groupnorm_groups,
+                                dropout_p=dropout_p, 
+                                time_embed_proj=False, 
+                                class_embed_proj=False,
+                                norm_eps=norm_eps
+                        )
+                )
+            
+        self.downsample = nn.Identity()
+        if add_downsample:
+            self.downsample = DownSampleBlock2D(in_channels=out_channels, 
+                                                downsample_factor=downsample_factor, 
+                                                kernel_size=downsample_kernel_size)
+
+    def forward(self, x, time_embed=None):
+
+        for block in self.blocks:
+            x = block(x, time_embed)
+        
+        x = self.downsample(x)
+
+        return x
+
+
+class DecoderBlock2D(nn.Module):
+
+    """
+    The Decoder block is a stack of Residual Blocks with an optional
+    upsampling layer to reduce the image size
+
+    Args:
+        - in_channels: The number of input channels to the Encoder
+        - out_channels: Number of output channels of the Encoder
+        - dropout_p: The dropout probability in the Residual Blocks
+        - norm_eps: Groupnorm eps
+        - num_residual_blocks: Number of Residual Blocks in the Encoder
+        - time_embed_proj: Do you want to enable time embeddings?
+        - time_embed_dim: Time embedding dimension
+        - add_upsample: Do you want to upsample the image?
+        - upsample_factor: By what factor do you want to upsample
+        - upsample_kernel_size: Kernel size for upsampling convolution
+    """
+     
+
+    def __init__(self, 
+                 in_channels, 
+                 out_channels, 
+                 dropout_p = 0.0,
+                 norm_eps = 1e-6, 
+                 groupnorm_groups = 32, 
+                 num_residual_blocks = 2, 
+                 add_upsample = True,
+                 upsample_factor = 2, 
+                 upsample_kernel_size = 3):
+        
+        super(DecoderBlock2D, self).__init__()
+        
+        self.blocks = nn.ModuleList()
+
+        for i in range(num_residual_blocks):       
+            conv_in_channels = in_channels if i == 0 else out_channels
+            self.blocks.append(
+                ResidualBlock2D(in_channels=conv_in_channels, 
+                                out_channels=out_channels,
+                                groupnorm_groups=groupnorm_groups,
+                                dropout_p=dropout_p, 
+                                time_embed_proj=False, 
+                                class_embed_proj=False,
+                                norm_eps=norm_eps
+                        )
+                )
+            
+        self.upsample = nn.Identity()
+        if add_upsample:
+            self.upsample = UpSampleBlock2D(in_channels=out_channels, 
+                                            upsample_factor=upsample_factor, 
+                                            kernel_size=upsample_kernel_size)
+
+    def forward(self, x, time_embed=None):
+
+        for block in self.blocks:
+            x = block(x, time_embed)
+        
+        x = self.upsample(x)
+
+        return x
+
 
 class VAEAttentionResidualBlock(nn.Module):
 
@@ -43,7 +170,6 @@ class VAEAttentionResidualBlock(nn.Module):
                  out_channels=in_channels, 
                  dropout_p=dropout_p, 
                  groupnorm_groups=groupnorm_groups,
-                 time_embed_proj=False,
                  norm_eps=norm_eps
             )
         )
@@ -68,7 +194,6 @@ class VAEAttentionResidualBlock(nn.Module):
                     out_channels=in_channels, 
                     dropout_p=dropout_p, 
                     groupnorm_groups=groupnorm_groups,
-                    time_embed_proj=False, 
                     norm_eps=norm_eps
                 )
             )
@@ -151,7 +276,6 @@ class VAEEncoder(nn.Module):
                     groupnorm_groups=groupnorm_groups,
                     norm_eps=norm_eps, 
                     num_residual_blocks=self.residual_layers_per_block,
-                    time_embed_proj=False,
                     add_downsample=not is_final_block, 
                     downsample_factor=downsample_factor, 
                     downsample_kernel_size=downsample_kernel_size
@@ -270,7 +394,6 @@ class VAEDecoder(nn.Module):
                     groupnorm_groups=groupnorm_groups, 
                     norm_eps=norm_eps,
                     num_residual_blocks=self.residual_layers_per_block,
-                    time_embed_proj=False,
                     add_upsample=not is_final_block, 
                     upsample_factor=upsample_factor,
                     upsample_kernel_size=upsample_kernel_size

@@ -26,7 +26,7 @@ training_args:
   lr_scheduler: constant_with_warmup            # LR Scheduler
   lr_warmup_steps: 1500                         # LR Warmup Steps
   total_training_iterations: 400000             # Total Training Iterations
-  checkpoint_iterations: 500                    # Checkpoint Iteration Frequency
+  checkpoint_iterations: 5000                   # Checkpoint Iteration Frequency
   per_gpu_batch_size: 12                        # Batch per GPU (multipled by n_gpus in accelerate)
   gradient_accumulations_steps: 1               # Split per GPU batch into accumulation steps
   max_grad_norm: 1.0                            # Max Grad Norm for Clipping

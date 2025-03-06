@@ -1,0 +1,52 @@
+unet:
+
+  ### UNET Block Structure ###
+  down_block_types: 
+    - AttnDown
+    - AttnDown
+    - AttnDown
+    - Down
+
+  mid_block_types: 
+    - AttnMid
+
+  up_block_types: 
+    - Up
+    - AttnUp
+    - AttnUp
+    - AttnUp
+  
+  unet_channels_per_block:
+    - 320
+    - 640
+    - 1280
+    - 1280
+
+  unet_residual_layers_per_block: 2
+  unet_up_down_factor: 2
+  unet_up_down_kernel_size: 3
+  transformer_blocks_per_layer: 1
+  transformer_dim_mult: 4 
+  attention_bias: False
+  attention_head_dim: 8
+
+  ### Time Embedding Config ###
+  time_embed_start_dim: 320
+  time_embed_proj_dim: 1280
+  time_embed_dim_requires_grad: True
+
+  ### Text Conditioning Config ###
+  text_config_hf_model: "openai/clip-vit-large-patch14"
+  text_conditioning: True
+  text_embed_dim:  768
+
+  ### Class Embedding Config ###
+  class_conditioning: False
+  class_embed_dim: 512
+  num_classes: 1000
+
+  ### General Config ###
+  pre_encoded_text: False
+  groupnorm_groups: 32
+  norm_eps: 1e-6
+  dropout: 0.0

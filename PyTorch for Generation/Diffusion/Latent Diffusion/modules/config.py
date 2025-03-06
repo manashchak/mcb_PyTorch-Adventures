@@ -51,6 +51,7 @@ class LDMConfig:
     ### Time Embeddings Config ###
     time_embed_start_dim: int = 320
     time_embed_proj_dim: int = 1280
+    time_embed_requires_grad: bool = False
 
     ### Attention Config ###
     transformer_blocks_per_layer: int = 1
@@ -59,12 +60,28 @@ class LDMConfig:
     attention_head_dim: int = 8
 
     ### Text Embeddings Config ###
-    text_conditioning: bool = True
+    text_conditioning_hf_model: bool = "openai/clip-vit-large-patch14"
+    text_conditioning: bool = False
     text_embed_dim: int = 768
+
+    ### Class Embeddings Config ###
+    class_conditioning: bool = False
+    class_embed_dim: int = 512
+    num_classes: int = 1000
+
+    ################################
+    ### DIFFUSION SAMPLER CONFIG ###
+    ################################
+
+    ### Sampler Config ###
+    num_diffusion_timesteps: int = 1000
+    beta_start: float = 0.0001
+    beta_end: float = 0.02 
 
     ######################
     ### GENERAL CONFIG ###
     ######################
+    pre_encoded_text: bool = False
     groupnorm_groups: int = 32
     norm_eps: float = 1e-6
     dropout: float = 0.0

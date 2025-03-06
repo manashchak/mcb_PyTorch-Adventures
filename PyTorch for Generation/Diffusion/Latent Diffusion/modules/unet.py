@@ -34,6 +34,8 @@ class DownBlock2D(nn.Module):
                  num_attention_heads=1,
                  cross_attention_dim=None,
                  time_embed_dim=1280, 
+                 class_conditioning=False,
+                 class_embed_dim=512,
                  dropout=0.0,  
                  num_layers=1, 
                  transformers_per_layer=1, 
@@ -44,7 +46,7 @@ class DownBlock2D(nn.Module):
                  add_downsample=True,
                  downsample_factor=2,
                  downsample_kernel_size=3):
-        
+
         super(DownBlock2D, self).__init__()
         
         self.add_downsample = add_downsample
@@ -65,6 +67,8 @@ class DownBlock2D(nn.Module):
                     groupnorm_groups=groupnorm_groups,
                     time_embed_proj=True, 
                     time_embed_dim=time_embed_dim,
+                    class_embed_proj=class_conditioning,
+                    class_embed_dim=class_embed_dim,
                     norm_eps=norm_eps
                 )
             )
@@ -95,16 +99,21 @@ class DownBlock2D(nn.Module):
                                                 kernel_size=downsample_kernel_size, 
                                                 downsample_factor=downsample_factor)
             
-    def forward(self, x, time_embed, context=None, attention_mask=None):
+    def forward(self, 
+                x, 
+                time_embed, 
+                text_conditioning=None, 
+                text_attention_mask=None,
+                class_conditioning=None):
 
         skip_connection_outputs = []
 
         for i, (res, attn) in enumerate(zip(self.resnets, self.attentions)):
 
-            x = res(x, time_embed)
+            x = res(x, time_embed, class_conditioning)
 
             if attn is not None:
-                x = attn(x, context, attention_mask)
+                x = attn(x, text_conditioning, text_attention_mask)
 
             skip_connection_outputs.append(x)
 
@@ -142,6 +151,8 @@ class MidBlock2D(nn.Module):
                  num_attention_heads=1,
                  cross_attention_dim=None,
                  time_embed_dim=1280, 
+                 class_conditioning=False,
+                 class_embed_dim=512,
                  dropout=0.0,  
                  num_layers=1, 
                  transformers_per_layer=1, 
@@ -162,6 +173,8 @@ class MidBlock2D(nn.Module):
                     groupnorm_groups=groupnorm_groups,
                     time_embed_proj=True, 
                     time_embed_dim=time_embed_dim,
+                    class_embed_proj=class_conditioning, 
+                    class_embed_dim=class_embed_dim,
                     norm_eps=norm_eps
                 )
             ]
@@ -182,6 +195,8 @@ class MidBlock2D(nn.Module):
                     groupnorm_groups=groupnorm_groups,
                     time_embed_proj=True, 
                     time_embed_dim=time_embed_dim,
+                    class_embed_proj=class_conditioning,
+                    class_embed_dim=class_embed_dim,
                     norm_eps=norm_eps
                 )
             )
@@ -208,16 +223,21 @@ class MidBlock2D(nn.Module):
 
                 self.attentions.append(None)
             
-    def forward(self, x, time_embed, context=None, attention_mask=None):
+    def forward(self, 
+                x, 
+                time_embed, 
+                text_conditioning=None, 
+                text_attention_mask=None,
+                class_conditioning=None):
         
         x = self.resnets[0](x, time_embed)
 
         for i, (res, attn) in enumerate(zip(self.resnets, self.attentions)):
 
-            x = res(x, time_embed)
+            x = res(x, time_embed, class_conditioning)
 
             if attn is not None:
-                x = attn(x, context, attention_mask)
+                x = attn(x, text_conditioning, text_attention_mask)
 
         return x
 
@@ -253,6 +273,8 @@ class UpBlock2D(nn.Module):
                  num_attention_heads=1,
                  cross_attention_dim=None,
                  time_embed_dim=1280, 
+                 class_conditioning=False, 
+                 class_embed_dim=512,
                  dropout=0.0,  
                  num_layers=1, 
                  transformers_per_layer=1, 
@@ -343,6 +365,8 @@ class UpBlock2D(nn.Module):
                     groupnorm_groups=groupnorm_groups, 
                     time_embed_proj=True, 
                     time_embed_dim=time_embed_dim, 
+                    class_embed_proj=class_conditioning,
+                    class_embed_dim=class_embed_dim,
                     norm_eps=norm_eps
                 )
             )
@@ -375,7 +399,13 @@ class UpBlock2D(nn.Module):
                                             upsample_factor=upsample_factor)
 
             
-    def forward(self, x, residual_block_tuple, time_embed, context=None, attention_mask=None):
+    def forward(self, 
+                x, 
+                residual_block_tuple, 
+                time_embed, 
+                text_conditioning=None, 
+                text_attention_mask=None,
+                class_conditioning=None):
 
         for res, attn in zip(self.resnets, self.attentions):
 
@@ -387,10 +417,10 @@ class UpBlock2D(nn.Module):
             x = torch.cat([x, skip_connection], dim=1)
 
             ### Pass through ResNet and Transformer Block ###
-            x = res(x, time_embed)
+            x = res(x, time_embed, class_conditioning)
             
             if attn is not None:
-                x = attn(x, context, attention_mask)
+                x = attn(x, text_conditioning, text_attention_mask)
 
         if self.add_upsample:
 
@@ -438,6 +468,8 @@ class UNet2DModel(nn.Module):
                                 num_attention_heads=output_channels//config.attention_head_dim,
                                 cross_attention_dim=config.text_embed_dim if config.text_conditioning else None,
                                 time_embed_dim=config.time_embed_proj_dim, 
+                                class_conditioning=config.class_conditioning,
+                                class_embed_dim=config.class_embed_dim,
                                 dropout=config.dropout,  
                                 num_layers=config.unet_residual_layers_per_block, 
                                 transformers_per_layer=config.transformer_blocks_per_layer, 
@@ -460,6 +492,8 @@ class UNet2DModel(nn.Module):
                                     num_attention_heads=channels//config.attention_head_dim,
                                     cross_attention_dim=config.text_embed_dim if config.text_conditioning else None,
                                     time_embed_dim=config.time_embed_proj_dim, 
+                                    class_conditioning=config.class_conditioning,
+                                    class_embed_dim=config.class_embed_dim,
                                     dropout=config.dropout,  
                                     transformer_dim_mult=config.transformer_dim_mult,
                                     attention_bias=config.attention_bias,
@@ -499,6 +533,8 @@ class UNet2DModel(nn.Module):
                               num_attention_heads=output_channels//config.attention_head_dim,
                               cross_attention_dim=config.text_embed_dim if config.text_conditioning else None,
                               time_embed_dim=config.time_embed_proj_dim, 
+                              class_conditioning=config.class_conditioning,
+                              class_embed_dim=config.class_embed_dim,
                               dropout=config.dropout,  
                               num_layers=config.unet_residual_layers_per_block + 1, 
                               transformers_per_layer=config.transformer_blocks_per_layer, 
@@ -524,7 +560,12 @@ class UNet2DModel(nn.Module):
                                   padding="same")
 
 
-    def forward(self, x, time_embed, context=None, attention_mask=None):
+    def forward(self, 
+                x, 
+                time_embed, 
+                text_conditioning=None, 
+                text_attention_mask=None,
+                class_conditioning=None):
         
         ### Store the Residuals from Every Layers ###
         residuals = ()
@@ -535,11 +576,20 @@ class UNet2DModel(nn.Module):
         
         ### Pass Through Encoder Blocks ###
         for block in self.down_blocks:
-            x, skip_connection = block(x, time_embed, context, attention_mask)
+            x, skip_connection = block(x, 
+                                       time_embed, 
+                                       text_conditioning, 
+                                       text_attention_mask,
+                                       class_conditioning)
+            
             residuals += tuple(skip_connection)
 
         ### Pass Through Mid Block (no skip connection) ###
-        x = self.mid_block(x, time_embed, context, attention_mask)
+        x = self.mid_block(x, 
+                           time_embed, 
+                           text_conditioning, 
+                           text_attention_mask,
+                           class_conditioning)
 
         ### Reverse Skip Connections for Decoder ###
         residuals = list(reversed(residuals))
@@ -551,7 +601,12 @@ class UNet2DModel(nn.Module):
             end_idx = start_idx + self.config.unet_residual_layers_per_block+1
             selected_skips = residuals[start_idx:end_idx]
 
-            x = block(x, selected_skips, time_embed, context, attention_mask)
+            x = block(x, 
+                      selected_skips, 
+                      time_embed, 
+                      text_conditioning, 
+                      text_attention_mask,
+                      class_conditioning)
 
         ### Final Convolutional Output ###
         x = self.norm_out(x)
@@ -559,15 +614,3 @@ class UNet2DModel(nn.Module):
         x = self.conv_out(x)
 
         return x
-
-if __name__ == "__main__":
-
-    from .config import LDMConfig
-
-    config = LDMConfig(text_conditioning=False)
-    model = UNet2DModel(config)
-
-    rand = torch.randn(2,4,32,32)
-    trand = torch.randn(2,1280)
-    out = model(x=rand, time_embed=trand)
-    print(out.shape)
