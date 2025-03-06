@@ -14,9 +14,9 @@ def generate_random_text_embeddings(batch_size, seq_len, embed_dim):
 def generate_random_images(batch, channels, height, width):
     return torch.rand(batch, channels, height, width)
 
-class TestUNet2D(unittest.TestCase):
+class TestCases(unittest.TestCase):
 
-    def test_unconditional(self):
+    def test_unconditional_unet(self):
 
         config = LDMConfig(text_conditioning=False,
                            class_conditioning=False)
@@ -33,7 +33,7 @@ class TestUNet2D(unittest.TestCase):
 
         self.assertEqual(tuple(out.shape), latent_shape)
 
-    def test_text_conditional(self):
+    def test_text_conditional_unet(self):
 
         config = LDMConfig(text_conditioning=True,
                            class_conditioning=False)
@@ -54,7 +54,7 @@ class TestUNet2D(unittest.TestCase):
 
         self.assertEqual(tuple(out.shape), latent_shape)
 
-    def test_class_conditional(self):
+    def test_class_conditional_unet(self):
 
         config = LDMConfig(text_conditioning=False,
                            class_conditioning=True)
@@ -111,6 +111,19 @@ class TestUNet2D(unittest.TestCase):
         self.assertEqual(tuple(out.shape), image_shape)
 
     def test_vqvae(self):
+
+        config = LDMConfig(quantize=True)
+        
+        model = VQVAE(config)
+
+        image_shape = (2, config.in_channels, config.img_size, config.img_size)
+        images = generate_random_images(*image_shape)
+
+        out = model(images)["reconstruction"]
+
+        self.assertEqual(tuple(out.shape), image_shape)
+
+    def test_unconditional_ldm(self):
 
         config = LDMConfig(quantize=True)
         
