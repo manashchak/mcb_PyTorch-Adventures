@@ -78,10 +78,6 @@ class GenericImageDataset(Dataset):
 
         return {"images": img}    
 
-def conceptual_captions_collate_fn(tokenizer_model="openai/clip-vit-large-patch14", return_transcript=True):
-    pass
-
-
 def conceptual_captions(path_to_data, transforms, return_caption):
 
     dataset = load_from_disk(path_to_data)

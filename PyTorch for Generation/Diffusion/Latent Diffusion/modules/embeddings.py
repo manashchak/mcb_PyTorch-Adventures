@@ -61,7 +61,9 @@ class ClassConditionalEmbeddings(nn.Module):
     """
     
     def __init__(self, num_classes, embed_dim):
-
+        
+        super(ClassConditionalEmbeddings, self).__init__()
+        
         self.num_classes = num_classes
         self.embed_dim = embed_dim
 

@@ -55,6 +55,12 @@ def experiment_config_parser():
                         type=str, 
                         metavar="training_config")
     
+    parser.add_argument("--model_config",
+                        help="Path to config file for all model information",
+                        required=True, 
+                        type=str, 
+                        metavar="model_config")
+    
     parser.add_argument("--dataset",
                         help="What dataset do you want to train on?",
                         choices=("conceptual_captions", "imagenet", "coco", "celeba", "celebahq", "birds", "ffhd"),
@@ -82,9 +88,11 @@ args = experiment_config_parser()
 with open(args.training_config, "r") as f:
     training_config = yaml.safe_load(f)["training_args"]
 
-with open(training_config["vae_config"], "r") as f:
-    vae_config = yaml.safe_load(f)["vqvae"]
+with open(args.model_config, "r") as f:
+    vae_config = yaml.safe_load(f)["vae"]
     config = LDMConfig(**vae_config)
+
+assert config.quantize, "This script only supports VQVAE, use stage1_vae_trainer.py for VAE"
 
 ### Initialize Accelerator/Tracker ###
 path_to_experiment = os.path.join(args.working_directory, args.experiment_name)

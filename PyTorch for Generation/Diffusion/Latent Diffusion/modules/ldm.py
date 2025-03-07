@@ -63,7 +63,6 @@ class LDM(nn.Module):
                                     beta_end=config.beta_end)
 
     def _load_vae_state_dict(self, state_dict):
-        
         self.vae.load_state_dict(state_dict)
 
     @torch.no_grad()
@@ -111,8 +110,8 @@ class LDM(nn.Module):
                     class_conditioning[dropout_mask] = self.class_encoder.unconditional_embedding
             else:
                 # If No Context is Passed, we are doing Unconditional Generation (0 Embeddings) #
-                class_conditioning = self.class_encoder.unconditional_embedding.unsqueeze(0).repeat(images.shape[0], -1)
-        
+                class_conditioning = self.class_encoder.unconditional_embedding.unsqueeze(0).repeat(images.shape[0], 1)
+
         ### Compress Images using AutoEncoder ###
         compressed_images = self._vae_encode_images(images, scale_factor=scale_factor)
 
@@ -152,7 +151,13 @@ if __name__ == "__main__":
 
     from .config import LDMConfig
 
-    config = LDMConfig()
+    config = LDMConfig(text_conditioning=False, 
+                       class_conditioning=True,
+                       pre_encoded_text=True)
 
     model = LDM(config=config)
-    print(model)
+
+    rand_images = torch.randn(2,3,256,256)
+    rand_text = torch.randint(0,1000, size=(2,))
+    out = model(rand_images, class_conditioning=None)
+    print(out)

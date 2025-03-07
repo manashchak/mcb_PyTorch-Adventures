@@ -122,19 +122,6 @@ class TestCases(unittest.TestCase):
         out = model(images)["reconstruction"]
 
         self.assertEqual(tuple(out.shape), image_shape)
-
-    def test_unconditional_ldm(self):
-
-        config = LDMConfig(quantize=True)
         
-        model = VQVAE(config)
-
-        image_shape = (2, config.in_channels, config.img_size, config.img_size)
-        images = generate_random_images(*image_shape)
-
-        out = model(images)["reconstruction"]
-
-        self.assertEqual(tuple(out.shape), image_shape)
-
 if __name__ == "__main__":
     unittest.main()
