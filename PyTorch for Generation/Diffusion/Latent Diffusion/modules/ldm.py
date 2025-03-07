@@ -63,8 +63,9 @@ class LDM(nn.Module):
                                     beta_end=config.beta_end)
 
     def _load_vae_state_dict(self, state_dict):
-        self.vae.load_state_dict(state_dict)
-
+        sucess = self.vae.load_state_dict(state_dict)
+        print(sucess)
+        
     @torch.no_grad()
     def _vae_encode_images(self, x, scale_factor=None):
         return self.vae.encode(x, return_stats=False, scale_factor=scale_factor)["posterior"]
@@ -122,17 +123,17 @@ class LDM(nn.Module):
         noisy_images, noise = self.ddpm_sampler.add_noise(compressed_images, timesteps)
         
         ### Get Timestep Embeddings ###
-        timestep_embeddings = self.sinusoidal_time_embeddings(timesteps)
+        timestep_embeddings = self.sinusoidal_time_embeddings(timesteps.to(images.device))
 
         ### Predict Noise with UNet Model ###
-        noise_pred = self.unet(noisy_images, 
+        noise_pred = self.unet(noisy_images.to(images.device), 
                                timestep_embeddings, 
                                text_conditioning=text_conditioning, 
                                text_attention_mask=text_attention_mask,
                                class_conditioning=class_conditioning)
 
         ### Compute Loss ###
-        loss = loss_functions[self.config.loss_fn](noise_pred, noise.to(noise_pred.device))
+        loss = loss_functions[self.config.diffusion_loss_fn](noise_pred, noise.to(noise_pred.device))
 
         return loss
 

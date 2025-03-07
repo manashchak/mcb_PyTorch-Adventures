@@ -1,0 +1,229 @@
+import os
+import yaml
+import argparse
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
+from accelerate import Accelerator
+from tqdm import tqdm
+from diffusers.optimization import get_scheduler
+from safetensors.torch import load_file
+
+from modules import LDM, LDMConfig
+from dataset import get_dataset
+
+### Load Arguments ###
+def experiment_config_parser():
+
+    parser = argparse.ArgumentParser(description="Experiment Configuration")
+
+    parser.add_argument("--experiment_name", 
+                        help="Name of Experiment being Launched", 
+                        required=True, 
+                        type=str,
+                        metavar="experiment_name")
+    
+    parser.add_argument("--wandb_run_name",
+                        required=True, 
+                        type=str,
+                        metavar="wandb_run_name")
+    
+    parser.add_argument("--working_directory", 
+                        help="Working Directory where checkpoints and logs are stored, inside a \
+                        folder labeled by the experiment name", 
+                        required=True, 
+                        type=str,
+                        metavar="working_directory")
+
+    parser.add_argument("--log_wandb",
+                        action=argparse.BooleanOptionalAction, 
+                        help="Do you want to log to WandB?")
+    
+    parser.add_argument("--resume_from_checkpoint", 
+                        help="Pass name of checkpoint folder to resume training from",
+                        default=None,
+                        type=str, 
+                        metavar="resume_from_checkpoint")
+    
+    parser.add_argument("--training_config",
+                        help="Path to config file for all training information",
+                        required=True,
+                        type=str, 
+                        metavar="training_config")
+    
+    parser.add_argument("--model_config",
+                        help="Path to config file for all model information",
+                        required=True, 
+                        type=str, 
+                        metavar="model_config")
+    
+    parser.add_argument("--path_to_vae_backbone",
+                        help="To train this model, you need a pretrained VAE first!",
+                        required=True, 
+                        type=str, 
+                        metavar="path_to_vae_backbone")
+    
+    parser.add_argument("--dataset",
+                        help="What dataset do you want to train on?",
+                        choices=("conceptual_captions", "imagenet", "coco", "celeba", "celebahq", "birds", "ffhd"),
+                        required=True,
+                        type=str)
+
+    parser.add_argument("--path_to_dataset",
+                        help="Root directory of dataset",
+                        required=True,
+                        type=str)
+    
+    parser.add_argument("--path_to_save_gens",
+                        help="Folder you want to store the testing generations througout training",
+                        required=True, 
+                        type=str)
+    
+
+    args = parser.parse_args()
+
+    return args
+
+args = experiment_config_parser()
+
+### Load Training Config ###
+with open(args.training_config, "r") as f:
+    training_config = yaml.safe_load(f)["training_args"]
+
+with open(args.model_config, "r") as f:
+    ldm_config = yaml.safe_load(f)
+
+### Load Accelerator ###
+path_to_experiment = os.path.join(args.working_directory, args.experiment_name)
+accelerator = Accelerator(project_dir=path_to_experiment, 
+                          gradient_accumulation_steps=training_config["gradient_accumulations_steps"], 
+                          log_with="wandb")
+
+### Load Config ###
+config = LDMConfig(**ldm_config["vae"], **ldm_config["unet"])
+
+### Check Conditioning Based On Dataset ###
+if args.dataset in ["imagenet", "birds"]:
+    config.class_conditioning = True
+    config.text_conditioning = False
+elif args.dataset in ["conceptual_captions"]:
+    config.text_conditioning = True
+    config.class_conditioning = False
+    config.pre_encoded_text = True
+else:
+    config.text_conditioning = False
+    config.class_conditioning = False
+
+### Set Loss Function in Config ###
+config.diffusion_loss_fn = training_config["loss_fn"]
+
+### Load Model ###
+model = LDM(config)
+
+### Load VAE Backbone ###
+state_dict = load_file(args.path_to_vae_backbone)
+model._load_vae_state_dict(state_dict)
+model = model.to(accelerator.device)
+
+### Check Model Parameters ###
+model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+params = sum([np.prod(p.size()) for p in model_parameters])
+accelerator.print("Number of Parameters:", params)
+
+### Prep Dataset ###
+mini_batchsize = training_config["per_gpu_batch_size"] // training_config["gradient_accumulations_steps"]
+dataset = get_dataset(dataset=args.dataset,
+                      path_to_data=args.path_to_dataset,
+                      num_channels=config.in_channels,
+                      img_size=config.img_size,
+                      random_resize=training_config["random_resize"],
+                      interpolation=training_config["interpolation"],
+                      return_caption=False)    
+
+accelerator.print("Number of Training Samples:", len(dataset))
+
+dataloader = DataLoader(dataset, 
+                        batch_size=mini_batchsize,
+                        pin_memory=training_config["pin_memory"],
+                        num_workers=training_config["num_workers"],
+                        shuffle=True)
+
+effective_epochs = (training_config["per_gpu_batch_size"] * \
+                        accelerator.num_processes * \
+                            training_config["total_training_iterations"]) / len(dataset)
+
+accelerator.print("Effective Epochs:", round(effective_epochs, 2))
+
+### Load Optimizer ###
+optimizer = torch.optim.AdamW(model.parameters(),
+                              lr=training_config["learning_rate"],
+                              betas=(training_config["optimizer_beta1"], training_config["optimizer_beta2"]),
+                              weight_decay=training_config["optimizer_weight_decay"])
+
+### Get Learning Rate Scheduler ###
+lr_scheduler = get_scheduler(
+        training_config["lr_scheduler"],
+        optimizer=optimizer,
+        num_training_steps=training_config["total_training_iterations"],
+        num_warmup_steps=training_config["lr_warmup_steps"]
+    )
+
+model, optimizer, lr_scheduler, dataloader = accelerator.prepare(
+    model, optimizer, lr_scheduler, dataloader
+)
+
+if args.resume_from_checkpoint is not None:
+    path_to_checkpoint = os.path.join(path_to_experiment, args.resume_from_checkpoint)
+    accelerator.load_state(path_to_checkpoint)
+    completed_steps = int(args.resume_from_checkpoint.split("_")[-1])
+    accelerator.print(f"Resuming from Iteration: {completed_steps}")
+else:
+    completed_steps = 0
+
+### Start Training ###
+progress_bar = tqdm(range(completed_steps, training_config["total_training_iterations"]), disable=not accelerator.is_main_process)
+accumulated_loss = 0
+train = True
+
+
+while train:
+
+    for batch in dataloader:
+        
+        pixel_values = batch["images"].to(accelerator.device)
+
+        with accelerator.accumulate():
+
+            ### Compute Loss ###
+            loss = model(pixel_values)
+
+            ### Train Model ###
+            accumulated_loss += loss / training_config["gradient_accumulations_steps"]
+
+            ## Compute Gradients ###
+            accelerator.backward(loss)
+
+            ### Clip Gradients ###
+            if accelerator.sync_gradients:
+                accelerator.clip_grad_norm_(model.parameters(), 1.0)
+
+            optimizer.step()
+            lr_scheduler.step()
+            optimizer.zero_grad(set_to_none=True)
+
+        if accelerator.sync_gradients:
+
+            loss_gathered = accelerator.gather_for_metrics(accumulated_loss)
+            mean_loss_gathered = torch.mean(loss_gathered).item()
+            accelerator.print(mean_loss_gathered)
+            accelerator.log({"loss": mean_loss_gathered,
+                            "learning_rate": lr_scheduler.get_last_lr()[0],
+                            "iteration": completed_steps},
+                            step=completed_steps)
+
+            ### Reset and Iterate ###
+            accumulated_loss = 0
+            completed_steps += 1
+            progress_bar.update(1)

@@ -59,11 +59,11 @@ unet:
   ### Time Embedding Config ###
   time_embed_start_dim: 320
   time_embed_proj_dim: 1280
-  time_embed_dim_requires_grad: True
+  time_embed_requires_grad: True
 
   ### Text Conditioning Config ###
-  text_config_hf_model: "openai/clip-vit-large-patch14"
-  text_conditioning: True
+  text_conditioning_hf_model: "openai/clip-vit-large-patch14"
+  text_conditioning: False
   text_embed_dim:  768
 
   ### Class Embedding Config ###
@@ -74,7 +74,7 @@ unet:
   ### General Config ###
   pre_encoded_text: False
   groupnorm_groups: 32
-  norm_eps: 1e-6
+  norm_eps: 0.000001
   dropout: 0.0
 
 scaling_constants:

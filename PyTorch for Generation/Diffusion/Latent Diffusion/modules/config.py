@@ -77,9 +77,7 @@ class LDMConfig:
     num_diffusion_timesteps: int = 1000
     beta_start: float = 0.0001
     beta_end: float = 0.02 
-
-    ### Loss Function ###
-    loss_fn = "mse"
+    diffusion_loss_fn: str = "mse"
 
     ######################
     ### GENERAL CONFIG ###
