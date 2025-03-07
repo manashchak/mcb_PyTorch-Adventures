@@ -429,6 +429,9 @@ class TransformerBlock2D(nn.Module):
         ### Return Back To Image Tensor (B,H*W,E) -> (B,E,H,W) ###
         x = seq2img(x)
 
+        ### Project Back to Input Channels ###
+        x = self.proj_out(x)
+
         return x
         
 

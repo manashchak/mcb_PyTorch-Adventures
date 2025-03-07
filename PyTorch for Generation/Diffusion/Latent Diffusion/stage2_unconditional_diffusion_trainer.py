@@ -1,4 +1,5 @@
 import os
+os.environ["TORCH_DISTRIBUTED_DEBUG"]="INFO"
 import yaml
 import argparse
 import numpy as np
@@ -8,11 +9,13 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from accelerate import Accelerator
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 from diffusers.optimization import get_scheduler
 from safetensors.torch import load_file
 
 from modules import LDM, LDMConfig
 from dataset import get_dataset
+from utils import save_generated_images
 
 ### Load Arguments ###
 def experiment_config_parser():
@@ -105,10 +108,10 @@ accelerator = Accelerator(project_dir=path_to_experiment,
 config = LDMConfig(**ldm_config["vae"], **ldm_config["unet"])
 
 ### Check Conditioning Based On Dataset ###
-if args.dataset in ["imagenet", "birds"]:
+if args.dataset == "imagenet":
     config.class_conditioning = True
     config.text_conditioning = False
-elif args.dataset in ["conceptual_captions"]:
+elif args.dataset == "conceptual_captions":
     config.text_conditioning = True
     config.class_conditioning = False
     config.pre_encoded_text = True
@@ -140,7 +143,8 @@ dataset = get_dataset(dataset=args.dataset,
                       img_size=config.img_size,
                       random_resize=training_config["random_resize"],
                       interpolation=training_config["interpolation"],
-                      return_caption=False)    
+                      return_caption=config.text_conditioning,
+                      return_classes=config.class_conditioning)    
 
 accelerator.print("Number of Training Samples:", len(dataset))
 
@@ -174,6 +178,7 @@ model, optimizer, lr_scheduler, dataloader = accelerator.prepare(
     model, optimizer, lr_scheduler, dataloader
 )
 
+### Load From Checkpoint ###
 if args.resume_from_checkpoint is not None:
     path_to_checkpoint = os.path.join(path_to_experiment, args.resume_from_checkpoint)
     accelerator.load_state(path_to_checkpoint)
@@ -182,11 +187,14 @@ if args.resume_from_checkpoint is not None:
 else:
     completed_steps = 0
 
+### Latent Space Dimensions ###
+compressed_dim = config.img_size//(2**(len(config.vae_channels_per_block) - 1))
+latent_space_dim = (config.latent_channels, compressed_dim, compressed_dim)
+
 ### Start Training ###
 progress_bar = tqdm(range(completed_steps, training_config["total_training_iterations"]), disable=not accelerator.is_main_process)
 accumulated_loss = 0
 train = True
-
 
 while train:
 
@@ -217,13 +225,50 @@ while train:
 
             loss_gathered = accelerator.gather_for_metrics(accumulated_loss)
             mean_loss_gathered = torch.mean(loss_gathered).item()
-            accelerator.print(mean_loss_gathered)
-            accelerator.log({"loss": mean_loss_gathered,
-                            "learning_rate": lr_scheduler.get_last_lr()[0],
-                            "iteration": completed_steps},
+
+            log = {"loss": mean_loss_gathered,
+                   "learning_rate": lr_scheduler.get_last_lr()[0],
+                   "iteration": completed_steps}
+            
+            accelerator.print(log)
+            
+            accelerator.log(log,
                             step=completed_steps)
 
             ### Reset and Iterate ###
             accumulated_loss = 0
             completed_steps += 1
             progress_bar.update(1)
+
+        if completed_steps % training_config["val_generation_freq"] == 0:
+            
+            if accelerator.is_main_process:
+
+                model.eval()
+
+                ### Start with Some Noise at Latent Space Dimensions ###
+                latent = torch.randn((training_config["num_val_random_samples"], *latent_space_dim))
+                
+                with torch.no_grad():
+
+                    ### Iteratively Pass Through UNet and use Sampler to remove noise ###
+                    for t in tqdm(np.arange(config.num_diffusion_timesteps)[::-1], disable=not accelerator.is_main_process):
+
+                        ### Generate Timesteps and Get Embeddings ###
+                        ts = torch.full((training_config["num_val_random_samples"], ), t)
+                        timestep_embeddings = model.sinusoidal_time_embeddings(ts.to(accelerator.device))
+
+                        noise_pred = model.unet(latent.to(accelerator.device), timestep_embeddings).detach().cpu()
+                        latent = model.ddpm_sampler.remove_noise(latent, ts, noise_pred)
+
+                    ### Decode Latent Back to Image Space ###
+                    images = model._vae_decode_images(latent.to(accelerator.device))
+
+                    save_generated_images(images,
+                                          path_to_save_folder="src/diffusion_gen",
+                                          step=completed_steps)
+                    
+            accelerator.wait_for_everyone()
+                    
+
+

@@ -222,17 +222,17 @@ class MidBlock2D(nn.Module):
             else:
 
                 self.attentions.append(None)
-            
+    
     def forward(self, 
                 x, 
                 time_embed, 
                 text_conditioning=None, 
                 text_attention_mask=None,
                 class_conditioning=None):
-        
+
         x = self.resnets[0](x, time_embed)
 
-        for i, (res, attn) in enumerate(zip(self.resnets, self.attentions)):
+        for i, (res, attn) in enumerate(zip(self.resnets[1:], self.attentions)):
 
             x = res(x, time_embed, class_conditioning)
 
