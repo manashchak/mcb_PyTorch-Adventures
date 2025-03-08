@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from PIL import Image
 from dataset import image_transforms
+from torchvision.utils import make_grid
 
 def count_num_params(model):
 
@@ -49,11 +50,11 @@ def load_val_images(path_to_image_folder,
 
     return val_images
 
-def save_generated_images(original_images, 
-                          generated_image_tensors, 
-                          path_to_save_folder, 
-                          step,
-                          accelerator):
+def save_orig_and_generated_images(original_images, 
+                                   generated_image_tensors, 
+                                   path_to_save_folder, 
+                                   step,
+                                   accelerator):
     
     ### Create Folder if it doesnt Exist ###
     if not os.path.isdir(path_to_save_folder):
@@ -96,4 +97,28 @@ def save_generated_images(original_images,
     path_to_save = os.path.join(path_to_save_folder, f"iteration_{step}.png")
     final_image.save(path_to_save)
 
-        
+def save_generated_images(generated_image_tensors,
+                          path_to_save_folder,
+                          step):
+
+    ### Clamp Output Between [-1 to 1] and rescale back to [0 to 255] ###
+    generated_image_tensors = generated_image_tensors.float()
+    generated_image_tensors = torch.clamp(generated_image_tensors, -1., 1.)
+    generated_image_tensors = (generated_image_tensors + 1) / 2
+    generated_image_tensors = generated_image_tensors.cpu().permute(0,2,3,1).numpy()
+    generated_image_tensors = (255 * generated_image_tensors).astype(np.uint8)
+    gen_imgs = [Image.fromarray(img).convert("RGB") for img in generated_image_tensors] 
+
+    ### Concat Images (so we can compare real vs reconstruction) ###
+    img_width = gen_imgs[0].width
+    img_height = gen_imgs[0].height
+ 
+    ### Concatenate All Samples Together ###
+    final_image = Image.new(mode="RGB", size=(img_width*len(gen_imgs), img_height))
+    x_offset = 0
+    for img in gen_imgs:
+        final_image.paste(img, (x_offset,0))
+        x_offset += img_width
+    
+    path_to_save = os.path.join(path_to_save_folder, f"iteration_{step}.png")
+    final_image.save(path_to_save)

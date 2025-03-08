@@ -73,10 +73,11 @@ class LDMConfig:
     ### DIFFUSION SAMPLER CONFIG ###
     ################################
 
-    ### Sampler Config ###
+    ### Diffusion Config ###
     num_diffusion_timesteps: int = 1000
     beta_start: float = 0.0001
     beta_end: float = 0.02 
+    cfg_dropout_prob: float = 0.1
     diffusion_loss_fn: str = "mse"
 
     ######################

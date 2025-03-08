@@ -11,7 +11,7 @@ from tqdm import tqdm
 from diffusers.optimization import get_scheduler
 import lpips
 
-from utils import load_val_images, save_generated_images, count_num_params
+from utils import load_val_images, save_orig_and_generated_images, count_num_params
 from modules import VAE, LDMConfig, PatchGAN, init_weights
 from modules import LPIPS as mylpips
 from dataset import get_dataset
@@ -449,11 +449,11 @@ while train:
                 with torch.no_grad():
                     reconstructions = model(images_to_plot)["reconstruction"]
 
-                save_generated_images(original_images=images_to_plot, 
-                                      generated_image_tensors=reconstructions.detach(), 
-                                      path_to_save_folder=args.path_to_save_gens, 
-                                      step=global_step,
-                                      accelerator=accelerator)
+                save_orig_and_generated_images(original_images=images_to_plot, 
+                                               generated_image_tensors=reconstructions.detach(), 
+                                               path_to_save_folder=args.path_to_save_gens, 
+                                               step=global_step,
+                                               accelerator=accelerator)
                 
                 model.train()
             

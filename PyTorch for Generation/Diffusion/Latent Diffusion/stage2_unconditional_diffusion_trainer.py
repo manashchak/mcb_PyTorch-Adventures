@@ -106,6 +106,15 @@ accelerator = Accelerator(project_dir=path_to_experiment,
 
 ### Load Config ###
 config = LDMConfig(**ldm_config["vae"], **ldm_config["unet"])
+scaling_constants = ldm_config["scaling_constants"]
+
+if args.dataset in scaling_constants.keys():
+    vae_scale_factor = scaling_constants[args.dataset]
+else:
+    accelerator.print("Using Scaling Constant of 1. Compute with compute_vae_scaling.py and set in ldm.config")
+    vae_scale_factor = 1
+
+config.vae_scale_factor = vae_scale_factor
 
 ### Check Conditioning Based On Dataset ###
 if args.dataset == "imagenet":
@@ -114,7 +123,7 @@ if args.dataset == "imagenet":
 elif args.dataset == "conceptual_captions":
     config.text_conditioning = True
     config.class_conditioning = False
-    config.pre_encoded_text = True
+    config.pre_encoded_text = training_config["pre_encoded_text"]
 else:
     config.text_conditioning = False
     config.class_conditioning = False
@@ -137,7 +146,7 @@ accelerator.print("Number of Parameters:", params)
 
 ### Prep Dataset ###
 mini_batchsize = training_config["per_gpu_batch_size"] // training_config["gradient_accumulations_steps"]
-dataset = get_dataset(dataset=args.dataset,
+dataset, collate_fn = get_dataset(dataset=args.dataset,
                       path_to_data=args.path_to_dataset,
                       num_channels=config.in_channels,
                       img_size=config.img_size,
@@ -152,7 +161,8 @@ dataloader = DataLoader(dataset,
                         batch_size=mini_batchsize,
                         pin_memory=training_config["pin_memory"],
                         num_workers=training_config["num_workers"],
-                        shuffle=True)
+                        shuffle=True,
+                        collate_fn=collate_fn)
 
 effective_epochs = (training_config["per_gpu_batch_size"] * \
                         accelerator.num_processes * \
@@ -200,12 +210,18 @@ while train:
 
     for batch in dataloader:
         
-        pixel_values = batch["images"].to(accelerator.device)
-
+        prepped_batch = {}
+        prepped_batch["images"] = batch["images"].to(accelerator.device)
+        prepped_batch["text_conditioning"] = batch["text_conditioning"] \
+            if "text_conditioning" in batch.keys() else None
+        prepped_batch["text_attention_mask"] = batch["text_attention_mask"] \
+            if "text_attention_mask" in batch.keys() else None        
+        prepped_batch["cfg_dropout_prob"] = config.cfg_dropout_prob
+        
         with accelerator.accumulate():
 
             ### Compute Loss ###
-            loss = model(pixel_values)
+            loss = model(**prepped_batch)
 
             ### Train Model ###
             accumulated_loss += loss / training_config["gradient_accumulations_steps"]
@@ -249,6 +265,8 @@ while train:
                 ### Start with Some Noise at Latent Space Dimensions ###
                 latent = torch.randn((training_config["num_val_random_samples"], *latent_space_dim))
                 
+                unwrapped_model = accelerator.unwrap_model(model)
+
                 with torch.no_grad():
 
                     ### Iteratively Pass Through UNet and use Sampler to remove noise ###
@@ -256,19 +274,24 @@ while train:
 
                         ### Generate Timesteps and Get Embeddings ###
                         ts = torch.full((training_config["num_val_random_samples"], ), t)
-                        timestep_embeddings = model.sinusoidal_time_embeddings(ts.to(accelerator.device))
+                        timestep_embeddings = unwrapped_model.sinusoidal_time_embeddings(ts.to(accelerator.device))
 
-                        noise_pred = model.unet(latent.to(accelerator.device), timestep_embeddings).detach().cpu()
-                        latent = model.ddpm_sampler.remove_noise(latent, ts, noise_pred)
+                        noise_pred = unwrapped_model.unet(latent.to(accelerator.device), timestep_embeddings).detach().cpu()
+                        latent = unwrapped_model.ddpm_sampler.remove_noise(latent, ts, noise_pred)
 
                     ### Decode Latent Back to Image Space ###
-                    images = model._vae_decode_images(latent.to(accelerator.device))
+                    images = unwrapped_model._vae_decode_images(latent.to(accelerator.device))
 
                     save_generated_images(images,
-                                          path_to_save_folder="src/diffusion_gen",
+                                          path_to_save_folder=args.path_to_save_gens,
                                           step=completed_steps)
                     
+                model.train()
+
             accelerator.wait_for_everyone()
-                    
+        
+        if (completed_steps % training_config["checkpoint_iterations"] == 0) or (completed_steps == training_config["total_training_iterations"]-1):
+            path_to_checkpoint = os.path.join(path_to_experiment, f"checkpoint_{completed_steps}")
+            accelerator.save_state(output_dir=path_to_checkpoint)
 
 

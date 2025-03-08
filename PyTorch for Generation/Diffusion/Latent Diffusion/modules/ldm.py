@@ -23,7 +23,10 @@ class LDM(nn.Module):
         if self.config.quantize:
             self.vae = VQVAE(config=config)
         else:
-            self.vae = VAE(config=config)   
+            self.vae = VAE(config=config)  
+
+        if config.vae_scale_factor is None:
+            print("vae_scale_factor not set in LDMConfig! Defaulting to 1 unless passed into forward") 
 
         ### VAE is PreTrained, Disable Gradients ###
         for param in self.vae.parameters():
