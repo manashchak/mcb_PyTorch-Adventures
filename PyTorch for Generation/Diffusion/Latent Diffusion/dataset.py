@@ -126,8 +126,8 @@ def ConceptualCaptionsCollateFunction(model_name="openai/clip-vit-large-patch14"
 
     def _collate_fn(batch):
 
-        images = [b["images"] for b in batch]
-
+        images = torch.stack([b["images"] for b in batch])
+     
         if return_captions:
             if pre_encoded_text:
 

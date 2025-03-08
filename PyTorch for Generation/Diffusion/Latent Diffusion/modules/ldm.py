@@ -4,7 +4,8 @@ from transformers import CLIPTextModel
 
 from .vae import VAE, VQVAE
 from .unet import UNet2DModel
-from .embeddings import PositionalEncoding, ClassConditionalEmbeddings
+from .embeddings import PositionalEncoding, ClassConditionalEmbeddings, \
+    TextConditionalEmbeddings
 from .scheduler import Sampler
 
 loss_functions = {"mse": nn.MSELoss(), 
@@ -40,15 +41,12 @@ class LDM(nn.Module):
         )
 
         ### Load Text Conditioning Model (if we have text and its not preencoded) ###
-        if config.text_conditioning and not config.pre_encoded_text:
-            self.text_encoder = CLIPTextModel.from_pretrained(
-                   config.text_conditioning_hf_model, 
+        if config.text_conditioning:
+            self.text_encoder = TextConditionalEmbeddings(
+                pre_encoded_text=config.pre_encoded_text, 
+                text_conditioning_hf_model=config.text_conditioning_hf_model,
+                text_embed_dim=config.text_embed_dim
             )
-
-            self.text_encoder.eval()
-
-            for param in self.text_encoder.parameters():
-                param.requires_grad = False
 
         ### Load Class Conditioning Module ###
         if config.class_conditioning:
@@ -77,10 +75,6 @@ class LDM(nn.Module):
     def _vae_decode_images(self, x, scale_factor=None):
         return self.vae.decode(x, scale_factor=scale_factor)
     
-    @torch.no_grad()
-    def _encode_text(self, input_ids, attention_mask=None):
-        return self.text_encoder(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
-
     def forward(self, 
                 images, 
                 text_conditioning=None, 
@@ -89,32 +83,24 @@ class LDM(nn.Module):
                 scale_factor=None,
                 cfg_dropout_prob=0):
         
-        ### Get Text Conditioning ###
-        if not self.config.pre_encoded_text and self.config.text_conditioning:
-            assert (text_conditioning.dtype == torch.long), "CLIP expects text tokens in Long Tensor"
-            if text_conditioning is not None:
-                text_conditioning = self._encode_text(text_conditioning, text_attention_mask)
-
-                ### Randomly Drop Conditioning Signal ###
-                if cfg_dropout_prob > 0:
-                    dropout_mask = torch.rand(text_conditioning.shape[0], device=text_conditioning.device) < cfg_dropout_prob
-                    text_conditioning[dropout_mask] = 0
-            else:
-                ### If No Context is Passed we are doing Unconditional Generation ###
-                text_conditioning = torch.zeros((images.shape[0], 1, self.config.text_embed_dim), device=images.device)
+        ### If we have text conditioning, then encode ###
+        if self.config.text_conditioning:
+            
+            text_conditioning = self.text_encoder(
+                batch_size=images.shape[0],
+                text_conditioning=text_conditioning, 
+                text_attention_mask=text_attention_mask, 
+                cfg_dropout_prob=cfg_dropout_prob
+            )
 
         ### Get Class Conditioning ###
         if self.config.class_conditioning:
-            if class_conditioning is not None:
-                class_conditioning = self.class_encoder(class_conditioning)
 
-                ### Randomly Drop Conditioning Signal ###
-                if cfg_dropout_prob > 0:
-                    dropout_mask = torch.rand(class_conditioning.shape[0], device=class_conditioning.device) < cfg_dropout_prob
-                    class_conditioning[dropout_mask] = self.class_encoder.unconditional_embedding
-            else:
-                # If No Context is Passed, we are doing Unconditional Generation (0 Embeddings) #
-                class_conditioning = self.class_encoder.unconditional_embedding.unsqueeze(0).repeat(images.shape[0], 1)
+            class_conditioning = self.class_encoder(
+                batch_size=images.shape[0],
+                class_conditioning=class_conditioning, 
+                cfg_dropout_prob=cfg_dropout_prob
+            )
 
         ### Compress Images using AutoEncoder ###
         compressed_images = self._vae_encode_images(images, scale_factor=scale_factor)

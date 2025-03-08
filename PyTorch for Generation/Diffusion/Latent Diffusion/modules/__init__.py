@@ -1,6 +1,6 @@
 from .config import LDMConfig
 from .discriminator import PatchGAN, init_weights
-from .embeddings import PositionalEncoding
+from .embeddings import PositionalEncoding, TextConditionalEmbeddings
 from .layers import UpSampleBlock2D, DownSampleBlock2D, ResidualBlock2D
 from .transformer import Attention, GEGLU, FeedForward, BasicTransformerBlock1D, \
     TransformerBlock2D

@@ -15,7 +15,7 @@ from safetensors.torch import load_file
 
 from modules import LDM, LDMConfig
 from dataset import get_dataset
-from utils import save_generated_images
+from utils import save_generated_images, load_testing_text_encodings
 
 ### Load Arguments ###
 def experiment_config_parser():
@@ -120,13 +120,23 @@ config.vae_scale_factor = vae_scale_factor
 if args.dataset == "imagenet":
     config.class_conditioning = True
     config.text_conditioning = False
+    sample_text_embeddings = None
+
 elif args.dataset == "conceptual_captions":
     config.text_conditioning = True
     config.class_conditioning = False
     config.pre_encoded_text = training_config["pre_encoded_text"]
+
+    ### Load Sample Text Prompt and their Embeddings ###
+    sample_text_embeddings = load_testing_text_encodings(
+        path_to_text="inputs/sample_text_cond_prompts.txt",
+        model=config.text_conditioning_hf_model
+    )
+
 else:
     config.text_conditioning = False
     config.class_conditioning = False
+    sample_text_embeddings = None
 
 ### Set Loss Function in Config ###
 config.diffusion_loss_fn = training_config["loss_fn"]
@@ -264,7 +274,15 @@ while train:
 
                 ### Start with Some Noise at Latent Space Dimensions ###
                 latent = torch.randn((training_config["num_val_random_samples"], *latent_space_dim))
-                
+
+                ### Grab the Text Embeddings and place on GPU ###
+                if sample_text_embeddings is not None:
+
+                    text_conditioning = sample_text_embeddings["text_conditioning"].to(accelerator.device)
+                    text_attention_mask = sample_text_embeddings["text_attention_mask"].to(accelerator.device)
+                else:
+                    text_conditioning, text_attention_mask = None, None
+
                 unwrapped_model = accelerator.unwrap_model(model)
 
                 with torch.no_grad():
@@ -276,8 +294,12 @@ while train:
                         ts = torch.full((training_config["num_val_random_samples"], ), t)
                         timestep_embeddings = unwrapped_model.sinusoidal_time_embeddings(ts.to(accelerator.device))
 
-                        noise_pred = unwrapped_model.unet(latent.to(accelerator.device), timestep_embeddings).detach().cpu()
-                        latent = unwrapped_model.ddpm_sampler.remove_noise(latent, ts, noise_pred)
+                        noise_pred = unwrapped_model.unet(latent.to(accelerator.device), 
+                                                          timestep_embeddings,
+                                                          text_conditioning=text_conditioning, 
+                                                          text_attention_mask=text_attention_mask)
+                        
+                        latent = unwrapped_model.ddpm_sampler.remove_noise(latent, ts, noise_pred.detach().cpu())
 
                     ### Decode Latent Back to Image Space ###
                     images = unwrapped_model._vae_decode_images(latent.to(accelerator.device))

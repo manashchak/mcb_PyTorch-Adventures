@@ -3,7 +3,7 @@ import torch
 import numpy as np
 from PIL import Image
 from dataset import image_transforms
-from torchvision.utils import make_grid
+from transformers import CLIPTokenizer, CLIPTextModel
 
 def count_num_params(model):
 
@@ -122,3 +122,30 @@ def save_generated_images(generated_image_tensors,
     
     path_to_save = os.path.join(path_to_save_folder, f"iteration_{step}.png")
     final_image.save(path_to_save)
+
+def load_testing_text_encodings(path_to_text="inputs/sample_text_cond_prompts.txt",
+                                model="openai/clip-vit-large-patch14"):
+    
+    tokenizer = CLIPTokenizer.from_pretrained(model)
+    model = CLIPTextModel.from_pretrained(model).eval()
+
+    ### Load Text ###
+    with open(path_to_text, "r") as f:
+        text = f.readlines()
+
+    text = [t.strip() for t in text]
+
+    tokenized = tokenizer(text, 
+                          return_tensors="pt", 
+                          padding=True,
+                          truncation=True, 
+                          max_length=77)
+    
+    with torch.no_grad():
+        text_embeddings = model(**tokenized).last_hidden_state
+
+    sample_text_emb = {"text_conditioning": text_embeddings,
+                       "text_attention_mask": tokenized["attention_mask"].bool()}
+    
+    return sample_text_emb
+
