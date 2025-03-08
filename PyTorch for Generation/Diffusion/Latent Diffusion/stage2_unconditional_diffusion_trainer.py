@@ -272,16 +272,20 @@ while train:
 
                 model.eval()
 
-                ### Start with Some Noise at Latent Space Dimensions ###
-                latent = torch.randn((training_config["num_val_random_samples"], *latent_space_dim))
-
                 ### Grab the Text Embeddings and place on GPU ###
                 if sample_text_embeddings is not None:
 
                     text_conditioning = sample_text_embeddings["text_conditioning"].to(accelerator.device)
                     text_attention_mask = sample_text_embeddings["text_attention_mask"].to(accelerator.device)
+
+                    ### Start with Some Noise at Latent Space Dimensions ###
+                    latent = torch.randn((len(text_conditioning), *latent_space_dim))
+
                 else:
                     text_conditioning, text_attention_mask = None, None
+
+                    ### Start with Some Noise at Latent Space Dimensions ###
+                    latent = torch.randn((training_config["num_val_random_samples"], *latent_space_dim))
 
                 unwrapped_model = accelerator.unwrap_model(model)
 
