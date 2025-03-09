@@ -15,7 +15,8 @@ from safetensors.torch import load_file
 
 from modules import LDM, LDMConfig
 from dataset import get_dataset
-from utils import save_generated_images, load_testing_text_encodings
+from utils import save_generated_images, load_testing_text_encodings, \
+    load_testing_imagenet_encodings
 
 ### Load Arguments ###
 def experiment_config_parser():
@@ -117,14 +118,21 @@ else:
 config.vae_scale_factor = vae_scale_factor
 
 ### Check Conditioning Based On Dataset ###
+config.class_conditioning = False
+config.text_conditioning = False
+sample_text_embeddings = None
+sample_class_labels = None
+
 if args.dataset == "imagenet":
     config.class_conditioning = True
-    config.text_conditioning = False
-    sample_text_embeddings = None
+
+    ### Load Which Labels To Test Generation ###
+    sample_class_labels = load_testing_imagenet_encodings(
+        path_to_imagenet_labels="inputs/imagenet_class_prompt.txt"
+    )
 
 elif args.dataset == "conceptual_captions":
     config.text_conditioning = True
-    config.class_conditioning = False
     config.pre_encoded_text = training_config["pre_encoded_text"]
 
     ### Load Sample Text Prompt and their Embeddings ###
@@ -132,11 +140,6 @@ elif args.dataset == "conceptual_captions":
         path_to_text="inputs/sample_text_cond_prompts.txt",
         model=config.text_conditioning_hf_model
     )
-
-else:
-    config.text_conditioning = False
-    config.class_conditioning = False
-    sample_text_embeddings = None
 
 ### Set Loss Function in Config ###
 config.diffusion_loss_fn = training_config["loss_fn"]
@@ -272,14 +275,25 @@ while train:
 
                 model.eval()
 
-                ### Grab the Text Embeddings and place on GPU ###
+                ### Handle Context ###
+                text_conditioning = text_attention_mask = class_conditioning = None
+
                 if sample_text_embeddings is not None:
 
+                    ### Grab the already prepped text conditioning and its attention mask ###
                     text_conditioning = sample_text_embeddings["text_conditioning"].to(accelerator.device)
                     text_attention_mask = sample_text_embeddings["text_attention_mask"].to(accelerator.device)
 
                     ### Start with Some Noise at Latent Space Dimensions ###
                     latent = torch.randn((len(text_conditioning), *latent_space_dim))
+                
+                elif sample_class_labels is not None:
+                    
+                    ### Grab class indexes from GenericImageLoader.classes
+                    class_conditioning = torch.tensor([dataset.classes[i] for i in sample_class_labels], device=accelerator.device)
+
+                    ### Start with Some Noise at Latent Space Dimensions ###
+                    latent = torch.randn((len(class_conditioning), *latent_space_dim))
 
                 else:
                     text_conditioning, text_attention_mask = None, None
@@ -301,7 +315,8 @@ while train:
                         noise_pred = unwrapped_model.unet(latent.to(accelerator.device), 
                                                           timestep_embeddings,
                                                           text_conditioning=text_conditioning, 
-                                                          text_attention_mask=text_attention_mask)
+                                                          text_attention_mask=text_attention_mask,
+                                                          class_conditioning=class_conditioning)
                         
                         latent = unwrapped_model.ddpm_sampler.remove_noise(latent, ts, noise_pred.detach().cpu())
 

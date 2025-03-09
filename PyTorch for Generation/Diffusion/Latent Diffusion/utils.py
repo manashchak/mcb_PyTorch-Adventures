@@ -1,8 +1,9 @@
 import os
 import torch
 import numpy as np
+import matplotlib.pyplot as plt
 from PIL import Image
-from dataset import image_transforms
+from dataset import image_transforms, GenericImageDataset
 from transformers import CLIPTokenizer, CLIPTextModel
 
 def count_num_params(model):
@@ -108,11 +109,13 @@ def save_generated_images(generated_image_tensors,
     generated_image_tensors = generated_image_tensors.cpu().permute(0,2,3,1).numpy()
     generated_image_tensors = (255 * generated_image_tensors).astype(np.uint8)
     gen_imgs = [Image.fromarray(img).convert("RGB") for img in generated_image_tensors] 
+    
+    path_to_save = os.path.join(path_to_save_folder, f"iteration_{step}.png")
 
     ### Concat Images (so we can compare real vs reconstruction) ###
     img_width = gen_imgs[0].width
     img_height = gen_imgs[0].height
- 
+    
     ### Concatenate All Samples Together ###
     final_image = Image.new(mode="RGB", size=(img_width*len(gen_imgs), img_height))
     x_offset = 0
@@ -120,8 +123,10 @@ def save_generated_images(generated_image_tensors,
         final_image.paste(img, (x_offset,0))
         x_offset += img_width
     
-    path_to_save = os.path.join(path_to_save_folder, f"iteration_{step}.png")
+    
     final_image.save(path_to_save)
+
+        
 
 def load_testing_text_encodings(path_to_text="inputs/sample_text_cond_prompts.txt",
                                 model="openai/clip-vit-large-patch14"):
@@ -149,3 +154,16 @@ def load_testing_text_encodings(path_to_text="inputs/sample_text_cond_prompts.tx
     
     return sample_text_emb
 
+def load_testing_imagenet_encodings(path_to_imagenet_labels="inputs/imagenet_class_prompt.txt"):
+
+    ### Grab the Labels We Want ###
+    with open(path_to_imagenet_labels, "r") as f:
+        selected = f.readlines()
+
+    selected = [s.strip() for s in selected]
+    print(selected)
+    return selected
+
+if __name__ == "__main__":
+
+    load_testing_imagenet_encodings()
