@@ -73,7 +73,7 @@ There are a few other datasets that we will use but are inconsistent to automati
 - [**Masked Language Modeling: RoBERTa**](PyTorch%20for%20NLP/RoBERTa%20for%20Masked%20Language%20Models)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1MChQ84-1VKBbjNCmzPQL02hxl-gckEYh?usp=sharing)
 - **Building Vision/Language Representations: CLIP**
   
-- [**Attention is All You Need for Language Translation**](PyTorch%20for%20NLP/Seq2Seq%20for%20Neural%20Machine%20Translation/)
+- [**Attention is All You Need for Language Translation**](PyTorch%20for%20NLP/Seq2Seq%20for%20Neural%20Machine%20Translation/)&nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1899211464642122171)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://www.youtube.com/playlist?list=PL16vydMdqFg9g9xevVEl-MVVaK9jcqyC5) &nbsp;
 
 ## Speech Processing ##
 - **Intro to Audio Processing in PyTorch**
@@ -84,7 +84,7 @@ There are a few other datasets that we will use but are inconsistent to automati
 
 ## Generative AI
 - ### AutoEncoders ##
-  - [**Intro to AutoEncoders**](PyTorch%20for%20Generation/AutoEncoders/Intro%20to%20AutoEncoders/Intro_To_AutoEncoders.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1DldfPN9q1uSA4UkZYHV-3Ms5be333EKN?usp=sharing)
+  - [**Intro to AutoEncoders**](PyTorch%20for%20Generation/AutoEncoders/Intro%20to%20AutoEncoders/Intro_To_AutoEncoders.ipynb)&nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1899201881890578688)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://youtu.be/p7yUWIySj8o)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1DldfPN9q1uSA4UkZYHV-3Ms5be333EKN?usp=sharing)
   - [**Variational AutoEncoders**](PyTorch%20for%20Generation/AutoEncoders/Intro%20to%20AutoEncoders/Variational_AutoEncoders.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1_NLc6g5UJ-tmRUXZbF5r1FgWoEApaLmH?usp=sharing)
   - **Beta-VAE**
   - [**Vector-Quantized Variational Autoencoders**](PyTorch%20for%20Generation/AutoEncoders/Intro%20to%20AutoEncoders/Vector_Quantized_Variational_AutoEncoders.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1QqdHlnfJV5BATUymrXy-wi3F8YUIQFpl?usp=sharing)
@@ -115,6 +115,7 @@ There are a few other datasets that we will use but are inconsistent to automati
   - [**Attention is All You Need**](PyTorch%20for%20Transformers/Attention%20Mechanisms/Attention/) &nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1893829898277671057)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://youtu.be/JXY5CmiK3LI)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1vJAlxRehKG7yzAFJTTPa4Ecew0cxc1fL?usp=sharing)
   - [**Windowed Attention**](PyTorch%20for%20Transformers/Attention%20Mechanisms/Sliding%20Window%20Attention/)
   - **LinFormer**
+  - **ConvFormer**
 
 - **Positional Embeddings**
   - **Sinusoial Encodings**
@@ -148,5 +149,6 @@ There are a few other datasets that we will use but are inconsistent to automati
 ## Tools
 - **Gradient Checkpointing**
 - [**Low Rank Adaptation**](PyTorch%20Tools/LoRA/)
+- [**Quantized Low Rank Adaptation**](PyTorch%20Tools/QLoRA/)
 - **TensorRT**
 - **DeepSpeed**
