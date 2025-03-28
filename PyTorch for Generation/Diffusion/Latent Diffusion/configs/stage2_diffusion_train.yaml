@@ -3,10 +3,10 @@ training_args:
   ### Training Config ###
   learning_rate: 0.000002                       # VAE Training Learning Rate
   lr_scheduler: constant_with_warmup            # LR Scheduler
-  lr_warmup_steps: 1500                         # LR Warmup Steps
+  lr_warmup_steps: 25000                        # LR Warmup Steps
   total_training_iterations: 400000             # Total Training Iterations
   checkpoint_iterations: 5000                   # Checkpoint Iteration Frequency
-  per_gpu_batch_size: 24                        # Batch per GPU (multipled by n_gpus in accelerate)
+  per_gpu_batch_size: 16                        # Batch per GPU (multipled by n_gpus in accelerate)
   gradient_accumulations_steps: 1               # Split per GPU batch into accumulation steps
   max_grad_norm: 1.0                            # Max Grad Norm for Clipping
   num_val_random_samples: 8                     # How many random samples do you want to plot reconstructions for? (max of the set batch per gpu)
