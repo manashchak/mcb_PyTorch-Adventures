@@ -33,7 +33,7 @@ unet:
     - AttnDown
     - Down
 
-  mid_block_types: Mid
+  mid_block_types: AttnMid
 
   up_block_types: 
     - Up
