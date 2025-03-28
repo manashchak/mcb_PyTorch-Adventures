@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 from transformers import CLIPTextModel
+from tqdm import tqdm
+from utils import save_generated_images
 
 from .vae import VAE, VQVAE
 from .unet import UNet2DModel
@@ -91,7 +93,7 @@ class LDM(nn.Module):
                 text_conditioning=text_conditioning, 
                 text_attention_mask=text_attention_mask, 
                 cfg_dropout_prob=cfg_dropout_prob
-                
+
             )
 
         ### Get Class Conditioning ###
@@ -131,25 +133,64 @@ class LDM(nn.Module):
     
     @torch.no_grad()
     def inference(self,
-                  noise, 
                   text_conditioning=None, 
                   text_attention_mask=None,
                   class_conditioning=None, 
-                  cfg_weight=1.0):
+                  cfg_weight=1.0,
+                  device="cuda",
+                  path_to_save="test.png"):
         
-        pass
+        ### Compute Latent Dimension Shape ###
+        latent_resolution = self.config.img_size // 2**(len(self.config.vae_channels_per_block)-1)
+
+        ### Sample Noise ###
+        image = torch.randn(1, self.config.latent_channels, latent_resolution, latent_resolution)
+        
+        ### Diffusion on the Latent Space ###
+        for t in tqdm(torch.flip(torch.arange(self.config.num_diffusion_timesteps), dims=[0])):
+            
+            ### Create Timestep Index ###
+            timesteps = torch.full((1, ), t).to(device)
+
+            ### Get Timestep Embeddings ###
+            timestep_embeddings = self.sinusoidal_time_embeddings(timesteps)
+            
+            ### Predict Noise ###
+            noise_pred = self.unet(image.to(device), 
+                                   timestep_embeddings, 
+                                   text_conditioning=text_conditioning, 
+                                   text_attention_mask=text_attention_mask,
+                                   class_conditioning=class_conditioning)
+            
+            ### Denoise ###
+            image = self.ddpm_sampler.remove_noise(image, t, noise_pred.detach().cpu())
+        
+        ### Decode Latent Back to Image Space ###
+        images = self._vae_decode_images(image.to(device))
+
+        save_generated_images(images,
+                              path_to_save=path_to_save)
+        pass    
 
 if __name__ == "__main__":
 
     from .config import LDMConfig
+    from safetensors.torch import load_file
+    import yaml
+    
+    with open("configs/ldm.yaml", "r") as f:
+        ldm_config = yaml.safe_load(f)
 
-    config = LDMConfig(text_conditioning=False, 
-                       class_conditioning=True,
-                       pre_encoded_text=True)
+    default_config = LDMConfig()
+    config = LDMConfig(mid_block_types="Mid", vae_scale_factor=0.8924759)
+    
+    ### Load Model ###
+    model = LDM(config=config).to("cuda")
+    
+    # ### Load Weights ###
+    weights = load_file("work_dir/diffusion_celebahq/model.safetensors")
+    success = model.load_state_dict(weights)
+    print(success)
 
-    model = LDM(config=config)
-
-    rand_images = torch.randn(2,3,256,256)
-    rand_text = torch.randint(0,1000, size=(2,))
-    out = model(rand_images, class_conditioning=None)
-    print(out)
+    model.inference(device="cuda")
+    
