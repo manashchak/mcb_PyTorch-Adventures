@@ -515,7 +515,7 @@ class Diffusion(nn.Module):
 
             ### 0 Out Embeddings Randomly for CFG ###
             if cfg_weight > 0:
-                encoded_text[torch.where(torch.randn(batch_size) < cfg_weight)] = 0
+                encoded_text[torch.where(torch.rand(batch_size) < cfg_weight)] = 0
         else:
             # If No Context is Passed, we are doing Unconditional Generation (0 Embeddings) #
             encoded_text = torch.zeros((batch_size, 1, self.context_embed_dim), device=noisy_inputs.device)
