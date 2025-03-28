@@ -484,7 +484,7 @@ class UNet2DModel(nn.Module):
             self.down_blocks.append(block)
 
         ### MidBlock ###
-        mid_use_attention = (config.mid_block_types == "AttnMid")
+        mid_use_attention = True if "Attn" in config.mid_block_types else False 
         channels = config.unet_channels_per_block[-1]
         self.mid_block = MidBlock2D(in_channels=channels, 
                                     out_channels=channels,
