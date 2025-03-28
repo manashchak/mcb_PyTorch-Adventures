@@ -99,8 +99,18 @@ def save_orig_and_generated_images(original_images,
     final_image.save(path_to_save)
 
 def save_generated_images(generated_image_tensors,
-                          path_to_save_folder,
-                          step):
+                          path_to_save_folder=None,
+                          step=None,
+                          path_to_save=None):
+    
+    """
+    Quick helper function where:
+
+    Args:
+        - path_to_save_folder: Directory you want to save image
+        - step: What iteration of training (expected when using path_to_save_folder)
+        - path_to_save: Full path to .png if you want to save an individual image
+    """
 
     ### Clamp Output Between [-1 to 1] and rescale back to [0 to 255] ###
     generated_image_tensors = generated_image_tensors.float()
@@ -110,7 +120,10 @@ def save_generated_images(generated_image_tensors,
     generated_image_tensors = (255 * generated_image_tensors).astype(np.uint8)
     gen_imgs = [Image.fromarray(img).convert("RGB") for img in generated_image_tensors] 
     
-    path_to_save = os.path.join(path_to_save_folder, f"iteration_{step}.png")
+    if path_to_save_folder is not None:
+        if step is not None:
+            path_to_save = os.path.join(path_to_save_folder, f"iteration_{step}.png")
+
 
     ### Concat Images (so we can compare real vs reconstruction) ###
     img_width = gen_imgs[0].width
