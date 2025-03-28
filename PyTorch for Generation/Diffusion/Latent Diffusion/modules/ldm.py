@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from transformers import CLIPTextModel
+from transformers import CLIPTextModel, CLIPTokenizer
 from tqdm import tqdm
 from utils import save_generated_images
 
@@ -138,8 +138,24 @@ class LDM(nn.Module):
                   class_conditioning=None, 
                   cfg_weight=1.0,
                   device="cuda",
-                  path_to_save="test.png"):
+                  path_to_save="gen.png"):
         
+        if text_conditioning is not None:
+
+            model = CLIPTextModel.from_pretrained(self.config.text_conditioning_hf_model).to(device)
+            tokenizer = CLIPTokenizer.from_pretrained(self.config.text_conditioning_hf_model)
+
+            text_conditioning = text_conditioning.strip()
+
+            tokenized = tokenizer(text_conditioning,
+                                  truncation=True, 
+                                  max_length=77)
+            
+            input_ids = torch.tensor(tokenized.input_ids).to(device).unsqueeze(0)
+            
+            with torch.no_grad():
+                text_conditioning = model(input_ids).last_hidden_state
+
         ### Compute Latent Dimension Shape ###
         latent_resolution = self.config.img_size // 2**(len(self.config.vae_channels_per_block)-1)
 
@@ -171,25 +187,3 @@ class LDM(nn.Module):
         save_generated_images(images,
                               path_to_save=path_to_save)    
 
-if __name__ == "__main__":
-
-    from .config import LDMConfig
-    from safetensors.torch import load_file
-    import yaml
-    
-    with open("configs/ldm.yaml", "r") as f:
-        ldm_config = yaml.safe_load(f)
-
-    default_config = LDMConfig()
-    config = LDMConfig(mid_block_types="Mid", vae_scale_factor=0.8924759)
-    
-    ### Load Model ###
-    model = LDM(config=config).to("cuda")
-    
-    # ### Load Weights ###
-    weights = load_file("work_dir/diffusion_celebahq/model.safetensors")
-    success = model.load_state_dict(weights)
-    print(success)
-
-    model.inference(device="cuda")
-    
