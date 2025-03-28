@@ -4,13 +4,13 @@ current popularity! Obviously things change with time, but if you can build mode
 should come easy! All the following visuals were pulled from [here](https://www.assemblyai.com/blog/pytorch-vs-tensorflow-in-2023/)
 in an analysis from Assembly AI.
 
-![plot](https://www.assemblyai.com/blog/content/images/2021/12/Fraction-of-Papers-Using-PyTorch-vs.-TensorFlow.png)
+![plot](https://cdn.prod.website-files.com/67a1e6de2f2eab2e125f8b9a/67be0ec7762fefb987e5ff56_Fraction-of-Papers-Using-PyTorch-vs.-TensorFlow.png)
 
 The popularity of PyTorch in research has skyrocketed, mainly due to its Pythonic structure, relative ease of use,
 and large opportunity for customization. More important is, many of the large Open Source efforts like the
 HuggingFace Platform 🤗 have a larger focus towards building on top of PyTorch over Tensorflow.
 
-![plot](https://www.assemblyai.com/blog/content/images/2023/01/num_top_models_2023.png)
+![plot](https://cdn.prod.website-files.com/67a1e6de2f2eab2e125f8b9a/67be0ec8aef316bdeea12871_percentage_repo_2023.png)
 
 Although many of the top models are offered in both PyTorch and Tensorflow variants, some models are **ONLY** available in 
 PyTorch. 
