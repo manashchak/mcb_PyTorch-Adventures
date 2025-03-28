@@ -91,15 +91,17 @@ class LDM(nn.Module):
                 text_conditioning=text_conditioning, 
                 text_attention_mask=text_attention_mask, 
                 cfg_dropout_prob=cfg_dropout_prob
+                
             )
 
         ### Get Class Conditioning ###
         if self.config.class_conditioning:
-
+            
             class_conditioning = self.class_encoder(
                 batch_size=images.shape[0],
                 class_conditioning=class_conditioning, 
                 cfg_dropout_prob=cfg_dropout_prob
+
             )
 
         ### Compress Images using AutoEncoder ###

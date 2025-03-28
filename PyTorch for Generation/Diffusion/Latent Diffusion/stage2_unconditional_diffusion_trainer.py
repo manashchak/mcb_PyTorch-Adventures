@@ -105,16 +105,22 @@ accelerator = Accelerator(project_dir=path_to_experiment,
                           gradient_accumulation_steps=training_config["gradient_accumulations_steps"], 
                           log_with="wandb")
 
+### Make sure Directory to Save Generations Exists ###
+if not os.path.isdir(args.path_to_save_gens):
+    accelerator.print(f"Creating Directory {args.path_to_save_gens}")
+    os.mkdir(args.path_to_save_gens)
+
 ### Load Config ###
 config = LDMConfig(**ldm_config["vae"], **ldm_config["unet"])
 scaling_constants = ldm_config["scaling_constants"]
 
+### Set the VAE Unit Variance Scaling ###
 if args.dataset in scaling_constants.keys():
     vae_scale_factor = scaling_constants[args.dataset]
+    accelerator.print(f"Using Scaling Constant of {vae_scale_factor}")
 else:
     accelerator.print("Using Scaling Constant of 1. Compute with compute_vae_scaling.py and set in ldm.config")
     vae_scale_factor = 1
-
 config.vae_scale_factor = vae_scale_factor
 
 ### Check Conditioning Based On Dataset ###
@@ -222,13 +228,15 @@ train = True
 while train:
 
     for batch in dataloader:
-        
+
         prepped_batch = {}
         prepped_batch["images"] = batch["images"].to(accelerator.device)
         prepped_batch["text_conditioning"] = batch["text_conditioning"] \
             if "text_conditioning" in batch.keys() else None
         prepped_batch["text_attention_mask"] = batch["text_attention_mask"] \
             if "text_attention_mask" in batch.keys() else None        
+        prepped_batch["class_conditioning"] = batch["class_conditioning"] \
+            if "class_conditioning" in batch.keys() else None 
         prepped_batch["cfg_dropout_prob"] = config.cfg_dropout_prob
         
         with accelerator.accumulate():
@@ -275,6 +283,8 @@ while train:
 
                 model.eval()
 
+                unwrapped_model = accelerator.unwrap_model(model)
+
                 ### Handle Context ###
                 text_conditioning = text_attention_mask = class_conditioning = None
 
@@ -292,6 +302,11 @@ while train:
                     ### Grab class indexes from GenericImageLoader.classes
                     class_conditioning = torch.tensor([dataset.classes[i] for i in sample_class_labels], device=accelerator.device)
 
+                    ### Get Embeddings from Class Encoder ###
+                    class_conditioning = unwrapped_model.class_encoder(batch_size=len(class_conditioning), 
+                                                                       class_conditioning=class_conditioning,
+                                                                       cfg_dropout_prob=0)            
+
                     ### Start with Some Noise at Latent Space Dimensions ###
                     latent = torch.randn((len(class_conditioning), *latent_space_dim))
 
@@ -301,8 +316,7 @@ while train:
                     ### Start with Some Noise at Latent Space Dimensions ###
                     latent = torch.randn((training_config["num_val_random_samples"], *latent_space_dim))
 
-                unwrapped_model = accelerator.unwrap_model(model)
-
+                
                 with torch.no_grad():
 
                     ### Iteratively Pass Through UNet and use Sampler to remove noise ###

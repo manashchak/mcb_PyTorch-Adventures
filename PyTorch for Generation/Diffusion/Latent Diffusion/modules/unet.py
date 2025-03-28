@@ -230,7 +230,7 @@ class MidBlock2D(nn.Module):
                 text_attention_mask=None,
                 class_conditioning=None):
 
-        x = self.resnets[0](x, time_embed)
+        x = self.resnets[0](x, time_embed, class_conditioning)
 
         for i, (res, attn) in enumerate(zip(self.resnets[1:], self.attentions)):
 
