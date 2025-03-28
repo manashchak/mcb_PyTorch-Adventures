@@ -169,8 +169,7 @@ class LDM(nn.Module):
         images = self._vae_decode_images(image.to(device))
 
         save_generated_images(images,
-                              path_to_save=path_to_save)
-        pass    
+                              path_to_save=path_to_save)    
 
 if __name__ == "__main__":
 
