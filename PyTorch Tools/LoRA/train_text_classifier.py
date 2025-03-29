@@ -31,7 +31,7 @@ weight_decay = 0.001
 warmup_steps = 100
 max_grad_norm = 1.0
 num_workers = 32
-gradient_checkpointing = False
+gradient_checkpointing = True
 log_wandb = False
 hf_dataset = "imdb"
 hf_model_name = "FacebookAI/roberta-base"
@@ -59,7 +59,7 @@ if not os.path.isdir(path_to_experiment):
 accelerator = Accelerator(project_dir=path_to_experiment,
                           log_with="wandb" if log_wandb else None)
 if log_wandb:
-    accelerator.init_trackers(experiment_name, init_kwargs={"wandb": {"name": wandb_run_name}})
+    accelerator.init_trackers(experiment_name, init_kwargs={"wandb": {"name": wandb_run_name}}) 
 
 ########################
 ### TOKENIZE DATASET ###
