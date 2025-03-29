@@ -84,7 +84,7 @@ class LoRALinear(nn.Linear, LoRALayerBase):
 
         ### Initialize lora_A. In the paper they use normal, but in the ###
         ### implementation they use kaiming_uniform_, so lets use that! ###
-        nn.init.kaiming_normal_(self.lora_A, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
 
     def _merge_weights(self):
 
@@ -158,7 +158,7 @@ class LoRAEmbedding(nn.Embedding, LoRALayerBase):
 
         ### Initialize lora_A. In the paper they use normal, but in the ###
         ### implementation they use kaiming_uniform_, so lets use that! ###
-        nn.init.kaiming_normal_(self.lora_A, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
 
     def _merge_weights(self):
         """
@@ -254,7 +254,7 @@ class LoRAConv2d(nn.Conv2d, LoRALayerBase):
 
         ### Initialize lora_A. In the paper they use normal, but in the ###
         ### implementation they use kaiming_uniform_, so lets use that! ###
-        nn.init.kaiming_normal_(self.lora_A, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
 
     def _merge_weights(self):
 
