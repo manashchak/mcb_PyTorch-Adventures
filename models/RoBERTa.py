@@ -1,189 +1,459 @@
+"""
+Implementation of RoBERTa! This is as close as possible (but much more simplified) 
+version of the RoBERTa implementation from 🤗 Huggingface!
+
+https://github.com/huggingface/transformers/blob/main/src/transformers/models/roberta/modeling_roberta.py
+
+
+"""
+import os
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from safetensors.torch import load_file
+from dataclasses import dataclass, asdict
+from typing import Literal
+from transformers import RobertaModel as HFRobertaModel
 
-class SelfAttentionEncoder(nn.Module):
-  def __init__(self,
-               embed_dim=768,
-               num_heads=12, 
-               attn_p=0,
-               proj_p=0):
-
-    """
-    Args:
-
-        embed_dim: What is the embedding dimension of each embedding vector
-        num_heads: How many heads of attention do we want?
-        attn_p: Dropout probability on Attention
-        proj_p: Dropout probability on projection matrix
-    """
-    super(SelfAttentionEncoder, self).__init__()
-    assert embed_dim % num_heads == 0
-    self.num_heads = num_heads
-    self.head_dim = int(embed_dim / num_heads)
-    self.scale = self.head_dim ** -0.5
-
-    self.qkv = nn.Linear(embed_dim, embed_dim*3)
-    self.attn_p = attn_p
-    self.attn_drop = nn.Dropout(attn_p)
-    self.proj = nn.Linear(embed_dim, embed_dim)
-    self.proj_drop = nn.Dropout(proj_p)
-
-  def forward(self, x, attention_mask=None):
-    batch_size, seq_len, embed_dim = x.shape
-    qkv = self.qkv(x).reshape(batch_size, seq_len, 3, self.num_heads, self.head_dim)
-    qkv = qkv.permute(2,0,3,1,4)
-    q,k,v = qkv.unbind(0)
-
-    # B x H x S x S
-    attn = (q @ k.transpose(-2,-1)) * self.scale
-    if attention_mask is not None:
-        ### We Need to Unsqueeze Attention Mask to have placeholder dimensions for Num Heads and Seq Len ###
-
-        # B, S -> B, 1, 1, S
-        attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)
-        attn = attn.masked_fill(attention_mask, float('-inf'))
-
-    attn = attn.softmax(dim=-1)
-    attn = self.attn_drop(attn)
-    x = attn @ v
-
-    x = x.transpose(1,2).reshape(batch_size, seq_len, embed_dim)
-    x = self.proj(x)
-    x = self.proj_drop(x)
-      
-    return x
-  
-class MLP(nn.Module):
-    def __init__(self, 
-                 in_features,
-                 hidden_features,
-                 out_features,
-                 act_layer=nn.GELU,
-                 mlp_p=0):
-
-
-        super(MLP, self).__init__()
-        self.fc1 = nn.Linear(in_features, hidden_features)
-        self.act = act_layer()
-        self.drop1 = nn.Dropout(mlp_p)
-        self.fc2 = nn.Linear(hidden_features, out_features)
-        self.drop2 = nn.Dropout(mlp_p)
+@dataclass
+class RobertaConfig:
     
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.act(x)
-        x = self.drop1(x)
-        x = self.fc2(x)
-        x = self.drop2(x)
+    ### Tokenizer Config
+    vocab_size: int = 50265
+    start_token: int = 0
+    end_token: int = 2
+    pad_token: int = 2
+    mask_token: int = 50264
+
+    ### Transformer Config ###
+    embedding_dimension: int = 768
+    num_transformer_blocks: int = 12
+    num_attention_heads: int = 12
+    mlp_ratio: int = 4
+    layer_norm_eps: float = 1e-6
+    hidden_dropout_p: float = 0.1
+    attention_dropout_p: float = 0.1
+    context_length: int = 512
+
+    ### Masking Config ###
+    masking_prob: float = 0.15
+
+    ### Huggingface Config ###
+    hf_model_name: str = "FacebookAI/roberta-base"
+
+    ### Model Config ###
+    pretrained_backbone: Literal["pretrained", "pretrained_huggingface", "random"] = "pretrained"
+    path_to_pretrained_weights: str = None
+
+    ### Added in to_dict() method so this Config is compatible with Huggingface Trainer!!! ###
+    def to_dict(self):
+        return asdict(self)
+    
+class RobertaEmbeddings(nn.Module):
+    """
+    Converts our tokens to embedding vectors and then adds positional embeddings (and potentially token type embeddings)
+    to our data! We wont need to token type embeddings until we do our QA finetuning. 
+    """
+    def __init__(self, config):
+        super(RobertaEmbeddings, self).__init__()
+
+        ### Embeddings for Tokens ###
+        self.word_embeddings = nn.Embedding(config.vocab_size, config.embedding_dimension, padding_idx=config.pad_token)
+
+        ### Positional Embeddings ###
+        self.position_embeddings = nn.Embedding(config.context_length, config.embedding_dimension)
+
+        ### Layernorm and Dropout ###
+        self.layernorm = nn.LayerNorm(config.embedding_dimension, eps=config.layer_norm_eps)
+        self.dropout = nn.Dropout(config.hidden_dropout_p)
+
+    def forward(self, input_ids):
+
+        batch_size, seq_length = input_ids.shape
+
+        ### Convert Tokens to Embeddings ###
+        x = self.word_embeddings(input_ids)
+
+        ### Add Positional Information ###
+        avail_idx = torch.arange(0, seq_length, dtype=torch.long, device=input_ids.device)
+        pos_embed = self.position_embeddings(avail_idx)
+        x = x + pos_embed
+
+        x = self.layernorm(x)
+        x = self.dropout(x)
+
         return x
-    
-class Block(nn.Module):
-    def __init__(self, 
-                 embed_dim=768, 
-                 num_heads=12, 
-                 mlp_ratio=4, 
-                 proj_p=0., 
-                 attn_p=0., 
-                 mlp_p=0., 
-                 act_layer=nn.GELU, 
-                 norm_layer=nn.LayerNorm):
 
-        super().__init__()
-        self.norm1 = norm_layer(embed_dim, eps=1e-6)
-        self.attn = SelfAttentionEncoder(embed_dim=embed_dim,
-                                         num_heads=num_heads, 
-                                         attn_p=attn_p,
-                                         proj_p=proj_p)
+            
+class RobertaAttention(nn.Module):
+    """
+    Regular Self-Attention but in this case we utilize flash_attention
+    incorporated in the F.scaled_dot_product_attention to speed up our training. 
+    """
+    def __init__(self, config):
+        super(RobertaAttention, self).__init__()
+        
+        ### Store Config ###
+        self.config = config
+        
+        ### Sanity Checks ###
+        assert config.embedding_dimension % config.num_attention_heads == 0, "Double check embedding dim divisible by number of heads"
 
+        ### Attention Head Dim ###
+        self.head_dim = config.embedding_dimension // config.num_attention_heads
 
-        self.norm2 = norm_layer(embed_dim, eps=1e-6)
-        self.mlp = MLP(in_features=embed_dim,
-                       hidden_features=int(embed_dim*mlp_ratio),
-                       out_features=embed_dim,
-                       act_layer=act_layer,
-                       mlp_p=mlp_p)
+        ### Attention Projections ###
+        self.q_proj = nn.Linear(config.embedding_dimension, config.embedding_dimension)
+        self.k_proj = nn.Linear(config.embedding_dimension, config.embedding_dimension)
+        self.v_proj = nn.Linear(config.embedding_dimension, config.embedding_dimension)
+
+        ### Post Attention Projection ###
+        self.out_proj = nn.Linear(config.embedding_dimension, config.embedding_dimension)
+        
 
     def forward(self, x, attention_mask=None):
-        x = x + self.attn(self.norm1(x), attention_mask)
-        x = x + self.mlp(self.norm2(x))
+
+        ### Store Shape ###
+        batch, seq_len, embed_dim = x.shape
+
+        ### Compute Attention with Flash Attention ###
+        q = self.q_proj(x).reshape(batch, seq_len, self.config.num_attention_heads, self.head_dim).transpose(1,2).contiguous()
+        k = self.k_proj(x).reshape(batch, seq_len, self.config.num_attention_heads, self.head_dim).transpose(1,2).contiguous()
+        v = self.v_proj(x).reshape(batch, seq_len, self.config.num_attention_heads, self.head_dim).transpose(1,2).contiguous()
+        
+        ### Compute Attention (Attention Mask has shape Batch x Sequence len x Sequence len) ###
+        attention_out = F.scaled_dot_product_attention(q, k, v, 
+                                                        attn_mask=attention_mask, 
+                                                        dropout_p=self.config.attention_dropout_p if self.training else 0.0)
+
+
+        ### Compute Output Projection ###
+        attention_out = attention_out.transpose(1,2).flatten(2)
+        attention_out = self.out_proj(attention_out)
+
+        return attention_out
+
+class RobertaFeedForward(nn.Module):
+    """
+    Regular MLP module after our attention computation. 
+    """
+    def __init__(self, config):
+        super(RobertaFeedForward, self).__init__()
+        
+        hidden_size = config.embedding_dimension * config.mlp_ratio
+        self.intermediate_dense = nn.Linear(config.embedding_dimension, hidden_size)
+        self.activation = nn.GELU()
+        self.intermediate_dropout = nn.Dropout(config.hidden_dropout_p)
+
+        self.output_dense = nn.Linear(hidden_size, config.embedding_dimension)
+        self.output_dropout = nn.Dropout(config.hidden_dropout_p)
+
+    def forward(self, x):
+        x = self.intermediate_dense(x)
+        x = self.activation(x)
+        x = self.intermediate_dropout(x)
+
+        x = self.output_dense(x)
+        x = self.output_dropout(x)
         return x
     
-class RoBERTa(nn.Module):
-    def __init__(self, 
-                 max_seq_len=512,
-                 vocab_size=tokenizer.vocab_size,
-                 embed_dim=768, 
-                 depth=12, 
-                 num_heads=12, 
-                 mlp_ratio=4, 
-                 attn_p=0., 
-                 mlp_p=0., 
-                 proj_p=0., 
-                 pos_p=0., 
-                 act_layer=nn.GELU, 
-                 norm_layer=nn.LayerNorm):
+class RobertaEncoderLayer(nn.Module):
+    """
+    Single transformer block stacking together Attention and our FeedForward
+    layers, with normalization and residual connections. 
+    """
+    def __init__(self, config):
+        super(RobertaEncoderLayer, self).__init__()
 
-        super(RoBERTa, self).__init__()
+        self.attention = RobertaAttention(config)
+        self.dropout = nn.Dropout(config.hidden_dropout_p)
+        self.layer_norm = nn.LayerNorm(config.embedding_dimension, eps=config.layer_norm_eps)
+        self.feed_forward = RobertaFeedForward(config)
+        self.final_layer_norm = nn.LayerNorm(config.embedding_dimension, eps=config.layer_norm_eps)
 
-        self.max_seq_len = max_seq_len
-        self.embeddings = nn.Embedding(vocab_size, embed_dim)
-        self.cls_token = nn.Parameter(torch.zeros(1,1,embed_dim))
-        self.pos_embed = nn.Embedding(max_seq_len+1, embed_dim)
-        self.pos_drop = nn.Dropout(pos_p)
+    def forward(self, x, attention_mask=None):
 
-        self.blocks = nn.ModuleList(
+        x = x + self.dropout(self.attention(x, attention_mask=attention_mask))
+        x = self.layer_norm(x)
+
+        x = x + self.feed_forward(x)
+        x = self.final_layer_norm(x)
+
+        return x
+    
+class RobertaEncoder(nn.Module):
+    """
+    This will be the stack of all of our transformer blocks
+    """
+    def __init__(self, config):
+        super(RobertaEncoder, self).__init__()
+
+        self.config = config
+
+        ### Transformer Layers ###
+        self.layers = nn.ModuleList(
             [
-                Block(embed_dim=embed_dim, 
-                      num_heads=num_heads, 
-                      mlp_ratio=mlp_ratio, 
-                      proj_p=proj_p, 
-                      attn_p=attn_p, 
-                      mlp_p=mlp_p, 
-                      act_layer=act_layer, 
-                      norm_layer=norm_layer)
-
-                for _ in range(depth)
+                RobertaEncoderLayer(config) for _ in range(config.num_transformer_blocks)
             ]
         )
-
-        self.norm = norm_layer(embed_dim)
-        self.head = nn.Linear(embed_dim, vocab_size)
-
-
-    def forward(self, x, attention_mask):
-        device = x.device
-
-        batch_size, seq_len = x.shape
-
-        ### If we have too long of a sequence length, grab the last chunk ###
-        if seq_len > self.max_seq_len:
-            x = x[:, -self.max_seq_len:]
-
-        ### We only need the positional information upto the length of data we have plus CLS token ###
-        avail_idx = torch.arange(0, seq_len+1, dtype=torch.long, device=device)
-
-        ### Embed all the Tokens ###
-        tok_emb = self.embeddings(x)
-
-        ### Concatenate on the CLSL Token ###
-        cls_token = self.cls_token.expand(batch_size, -1, -1) # (batch, 1, embed_dim)
-        tok_emb = torch.cat((cls_token, tok_emb), dim=1) 
-
-        ### Add positional information ###
-        pos_emb = self.pos_embed(avail_idx)
-        x = tok_emb + pos_emb
-        x = self.pos_drop(x)
-
-        for block in self.blocks:
-            x = block(x)
-
-        ### Slice Off CLS token ###
-        cls_token_final = x[:, 0] 
-
-        ### Slice off Remaining Tokens ###
-        x = x[:, 1:]
-
-        ### MLM Prediction Head ###
-        x = self.head(x)
         
+    def forward(
+        self,
+        x,
+        attention_mask = None,
+    ):
+
+        batch_size, seq_len, embed_dim = x.shape
+
+        if attention_mask is not None:
+
+            ### Make Sure Attention Mask is a Boolean Tensor ###
+            attention_mask = attention_mask.bool()
+
+            ### Now our Attention Mask is in (Batch x Sequence Length) where we have 0 for tokens we don't want to attend to ###
+            ### F.scaled_dot_product_attention expects a mask of the shape (Batch x ..., x Seq_len x Seq_len) ###
+            ### the "..." in this case is any extra dimensions (such as heads of attention). lets expand our mask to (Batch x 1 x Seq_len x Seq_len) ###
+            ### The 1 in this case refers to the number of heads of attention we want, so it is a dummy index to broadcast over ###
+            ### In each (Seq_len x Seq_len) matrix for every batch, we want False for all columns corresponding to padding tokens ###
+            attention_mask = attention_mask.unsqueeze(1).unsqueeze(1).repeat(1, 1, seq_len, 1)
+            
+        for layer in self.layers:
+
+            x = layer(x, attention_mask=attention_mask)
+
         return x
+
+class RobertaMLMHead(nn.Module):
+
+    """
+    The Masked Language model head is a stack of two linear layers with an activation in between!
+    """
+
+    def __init__(self, config):
+        super(RobertaMLMHead, self).__init__()
+
+        self.config = config
+
+        ### Projection Layer for Hidden States ###
+        self.dense = nn.Linear(config.embedding_dimension, config.embedding_dimension)
+        self.layer_norm = nn.LayerNorm(config.embedding_dimension, eps=config.layer_norm_eps)
+        self.activation = nn.GELU()
+
+        ### Mapping to Vocabulary ###
+        self.decoder = nn.Linear(config.embedding_dimension, config.vocab_size)
+
+    def forward(self, inputs):
+        
+        ### Pass through Projection/Activation/Norm ###
+        x = self.dense(inputs)
+        x = self.activation(x)
+        x = self.layer_norm(x)
+
+        ### Prediction of Masked Tokens ###
+        x = self.decoder(x)
+
+        return x
+
+class RobertaModel(nn.Module):
+
+    """
+    Backbone of our model, has to be pretrained via MLM on a ton of data!
+    """
+
+    def __init__(self, config):
+        super(RobertaModel, self).__init__()
+
+        self.config = config
+
+        ### Define all Parts of the Model ###
+        self.embeddings = RobertaEmbeddings(config)
+        self.encoder = RobertaEncoder(config)
+        
+
+    def forward(self, input_ids, attention_mask=None):
+        
+        embeddings = self.embeddings(input_ids)
+        output = self.encoder(embeddings, attention_mask)
+
+        return output
+
+class RobertaForMaskedLM(nn.Module):
+
+    """
+    This model will perform the masked language modeling task. 
+    """
+
+    def __init__(self, config):
+        super(RobertaForMaskedLM, self).__init__()
+
+        self.config = config
+
+        ### Define Model and MLM Head ###
+        self.roberta = RobertaModel(config)
+        self.mlm_head = RobertaMLMHead(config)
+
+        self.apply(_init_weights_)
+
+    def forward(self,
+                input_ids, 
+                attention_mask=None, 
+                labels=None):
+        
+        ### Pass data through model ###
+        hidden_states = self.roberta(input_ids,
+                                     attention_mask)
+
+        preds = self.mlm_head(hidden_states)
+
+        ### Compute Loss if Labels are Available ###
+        loss = None
+        if labels is not None:
+            
+            ### Flatten Logits to (B*S x N) and Labels to (B*S) ###
+            preds = preds.flatten(end_dim=1)
+            labels = labels.flatten()
+
+            loss = F.cross_entropy(preds, labels)
+
+            return hidden_states, preds, loss
+        
+        else:
+            return hidden_states, preds
+        
+class RobertaForQuestionAnswering(nn.Module):
+
+    """
+    RoBERTa model for Extractive Question answering. The inputs to this are sequence of tokens
+    that are the question you want to ask and the context for the question the answer from. The
+    goal of this model is to predict the start and end token of context that includes the answer
+    to the question we have. 
+    """
+
+    def __init__(self, config):
+        super().__init__()
+        
+        self.config = config
+
+        ### Grab Backbone Based on Config ###
+        self.load_backbone()
+
+        ### Initialize Prediction Head ###
+        self.qa_head = nn.Linear(config.embedding_dimension, 2)
+
+    def load_backbone(self):
+        
+        if self.config.pretrained_backbone == "pretrained_huggingface":
+            print(f"Loading Huggingface Roberta Backbone: {self.config.hf_model_name}")
+            self.roberta = HFRobertaModel.from_pretrained(self.config.hf_model_name)
+
+        else:
+            self.roberta = RobertaModel(self.config)
+
+            if self.config.pretrained_backbone == "pretrained":
+                if self.config.path_to_pretrained_weights is None:
+                    raise Exception("Provide the argument `path_to_pretrained_weights` in the config, else we cant load them!")
+                else:
+                    
+                    if not os.path.isfile(self.config.path_to_pretrained_weights):
+                        raise Exception(f"Provided path to safetensors weights {self.config.path_to_pretrained_weights} is invalid!")
+
+                    print(f"Loading RobertaModel Backbone from {self.config.path_to_pretrained_weights}")
+
+                    ### Load Weights with load_file from safetensors ###
+                    state_dict = load_file(self.config.path_to_pretrained_weights)
+
+                    ### Cleanup of Weights and keys ###
+                    backbone_keys = {}
+                    for key in state_dict.keys():
+
+                        ### If roberta is in key name, just remove from the key name ###
+                        if "roberta" in key:
+                            new_key = key.replace("roberta.", "")
+                            backbone_keys[new_key] = state_dict[key]
+
+                        ### If roberta is not in key name, it isnt a part of the backbone so ignore it ###
+                        else:
+                            continue
+
+                    ### Load State Dict to Backbone ###
+                    self.roberta.load_state_dict(backbone_keys)
+
+    def forward(self,
+                input_ids, 
+                attention_mask=None, 
+                start_positions=None, 
+                end_positions=None):
+
+        ### Different returns based on which backbone we are using ###
+        if self.config.pretrained_backbone == "pretrained_huggingface":
+            outputs = self.roberta(input_ids, attention_mask)
+
+            ### Outputs have shape (Batch x Seq Len x Embedding Dim)
+            outputs = outputs.last_hidden_state
+
+        else:
+            outputs = self.roberta(input_ids, attention_mask)
+
+        ### Pass Outputs through QA Head, Shape (Batch x Seq Len x 2) ###
+        logits = self.qa_head(outputs)
+
+        ### Split Logits by last Dim and sequeeze to make (Batch x Seq Len) ###
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1)
+        end_logits = end_logits.squeeze(-1)
+
+        ### If the True Start/End positions are provided we can compute loss ###
+        total_loss = None
+        if start_positions is not None and end_positions is not None:
+            
+            ### Make sure Stard and End positions are just vectors (Batch Size) ###
+            if len(start_positions.size()) > 1: 
+                start_positions = start_positions.squeeze(-1)
+            if len(end_positions.size()) > 1:
+                end_positions = end_positions.squeeze(-1)
+
+            ### Any labels with an index value larger than the total sequence length, should be ignored ###
+            ### In our case our max length is 512, which includes the question and the context. We need to ensure ###
+            ### that the answer is within the context portion of our 512 tokens. Therefore, if the start or end index is ###
+            ### beyond 512 tokens, then it isnt in the context and we ignore it. ###
+            ### In the `utils.ExtractiveQAPreProcessing` we already handled this so it doesnt matter all that much, I just want to ###
+            ### keep this as similar as possible to the Huggingface implementation ###
+
+            # Grab the sequence length as the max tokens we can use to predict the start and end ###
+            ignored_index = start_logits.size(1)
+            
+            # Clamp the labels to this, and then ignore these in the loss computation ###
+            start_positions = start_positions.clamp(0, ignored_index)
+            end_positions = end_positions.clamp(0, ignored_index)
+            
+            # Compute Loss on logits (Batch x Sequence) and target positions (Batch). Basically, we need to predict which of the 512 in the sequence
+            # is the start token and which is the end token
+            start_loss = F.cross_entropy(start_logits, start_positions, ignore_index=ignored_index)
+            end_loss = F.cross_entropy(end_logits, end_positions, ignore_index=ignored_index)
+
+            # Average up the losses 
+            total_loss = (start_loss + end_loss) / 2
+
+        if total_loss is not None:
+            return total_loss, start_logits, end_logits
+        else:
+            return start_logits, end_logits
+
+
+def _init_weights_(module):
+
+    """
+    Simple weight intialization taken directly from the huggingface
+    `modeling_roberta.py` implementation! 
+    """
+    if isinstance(module, nn.Linear):
+        module.weight.data.normal_(mean=0.0, std=0.02)
+        if module.bias is not None:
+            module.bias.data.zero_()
+    elif isinstance(module, nn.Embedding):
+        module.weight.data.normal_(mean=0.0, std=0.02)
+        if module.padding_idx is not None:
+            module.weight.data[module.padding_idx].zero_()
+    elif isinstance(module, nn.LayerNorm):
+        module.bias.data.zero_()
+        module.weight.data.fill_(1.0)
