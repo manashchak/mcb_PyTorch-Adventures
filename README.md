@@ -79,7 +79,7 @@ There are a few other datasets that we will use but are inconsistent to automati
 
 ## Speech Processing ##
 - **Intro to Audio Processing in PyTorch**
-- **Connectionist Temporal Classification Loss**
+- [**Connectionist Temporal Classification Loss**](PyTorch%20for%20Audio/Connectionist%20Temporal%20Classification/)
 - **Intro to Automatic Speech Recognition**
 - [**Quantized Audio Pre-Training: Wav2Vec2**](PyTorch%20for%20Audio/Wav2Vec2/)
 - **EnCodec**
