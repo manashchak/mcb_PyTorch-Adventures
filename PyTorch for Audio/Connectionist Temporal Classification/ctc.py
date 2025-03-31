@@ -143,7 +143,7 @@ def ctc_loss(log_probs, targets, input_lengths, target_lengths, blank=0, reducti
 
 if __name__ == "__main__":
     T, B, C = 128, 256, 32
-    t = 4
+    t = 50
     blank = 0
     device = "cuda"
     seed = 1
