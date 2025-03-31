@@ -101,7 +101,7 @@ There are a few other datasets that we will use but are inconsistent to automati
   - [**Deep Convolutional GAN**](PyTorch%20for%20Generation/Generative%20Adversarial%20Network/DCGAN/)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1kB-6KvR0IVsXtWI6MElNd3m02mpX7S9u?usp=sharing)
   - [**Wasserstein GAN**](PyTorch%20for%20Generation/Generative%20Adversarial%20Network/WGAN/)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1HneZAIokGAZW8Eq0ussFBoaw3BmG3imm?usp=sharing)
   - **SuperResolution with SRGAN**
-  - **Image2Image Translation with CycleGAN**
+  - [**Image2Image Translation with CycleGAN**](PyTorch%20for%20Generation/Generative%20Adversarial%20Network/CycleGAN/)
   - **HIFIGAN**
 
 - ### Diffusion ##
