@@ -22,8 +22,9 @@ def ctc_loss(log_probs, targets, input_lengths, target_lengths, blank=0, reducti
     seq_len, batch_size, num_classes = log_probs.shape
     B = torch.arange(batch_size)
     
-    ### _t_a_r_g_e_t_s_: [28, 1, 17, 21, 28] -> Append first token to end (wrap) ###
-    _t_a_r_g_e_t_s_ = torch.cat([targets, targets[:, :1]], dim=-1)
+    ### _t_a_r_g_e_t_s_: [28, 1, 17, 21, 28] -> Append a blank token at the end (we could really use anything, doesnt matter) ###
+    ### its just a placeholder so our indexing is happy, we will never use this token anywhere or include it in the loss
+    _t_a_r_g_e_t_s_ = torch.cat([targets, torch.zeros(batch_size, 1, device=log_probs.device, dtype=torch.long)], dim=-1)
 
     ### _t_a_r_g_e_t_s_: [0, 28, 0, 1, 0, 17, 0, 21, 0, 28] -> Insert blank tokens in between targets
     _t_a_r_g_e_t_s_ = torch.stack([torch.full_like(_t_a_r_g_e_t_s_, blank), _t_a_r_g_e_t_s_], dim=-1).flatten(start_dim=-2)
@@ -134,12 +135,16 @@ def ctc_loss(log_probs, targets, input_lengths, target_lengths, blank=0, reducti
     ### Now that we have both possibilities of endings, we have to ensure that we logsumexp up both together 
     ### As both are valid, so we want the total probability! Also we want negative log likelihood as we want to 
     ### maximize the probability (or minimize the negative probability)
-
     loss = - torch.logsumexp(label_or_blank_ending_log_alphas, dim=-1)
     
-    return loss
-
-
+    if reduction == "none":
+        return loss
+    elif reduction == "sum":
+        return torch.sum(loss)
+    elif reduction == "mean":
+        return torch.mean(loss)
+    else:
+        raise ValueError("Select reductions from 'none', 'sum' and 'mean' !")
 
 if __name__ == "__main__":
     T, B, C = 128, 256, 32
@@ -156,10 +161,10 @@ if __name__ == "__main__":
     log_probs = logits.log_softmax(dim=-1).to(device)
 
     torch_ctc = torch.nn.functional.ctc_loss(log_probs, targets, input_lengths, target_lengths, blank = 0, reduction = 'none')
-    torch_ctc_grad, = torch.autograd.grad(torch_ctc.sum(), logits, retain_graph = True)
+    torch_ctc_grad, = torch.autograd.grad(torch_ctc.mean(), logits, retain_graph = True)
 
     my_ctc = ctc_loss(log_probs, targets, input_lengths, target_lengths)
-    my_ctc_grad, = torch.autograd.grad(my_ctc.sum(), logits, retain_graph = True)
+    my_ctc_grad, = torch.autograd.grad(my_ctc.mean(), logits, retain_graph = True)
 
     print('CTC Losses Match:', torch.allclose(torch_ctc, my_ctc, atol = atol))
     print('Grad matches:', torch.allclose(torch_ctc_grad, my_ctc_grad, atol = atol))
