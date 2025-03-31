@@ -218,9 +218,11 @@ class CycleGAN(nn.Module):
     
     def __init__(self, config):
 
+        super(CycleGAN, self).__init__()
+
         self.config = config
 
-        self.generator_AB = ResNetGenerator(
+        self.generator_src2tgt = ResNetGenerator(
             in_channels=config.in_channels, 
             base_channels=config.generator_base_channels, 
             num_residual_blocks=config.generator_num_residual_blocks,
@@ -228,7 +230,7 @@ class CycleGAN(nn.Module):
             padding_type=config.generator_padding_type
         )
 
-        self.generator_BA = ResNetGenerator(
+        self.generator_tgt2src = ResNetGenerator(
             in_channels=config.in_channels, 
             base_channels=config.generator_base_channels, 
             num_residual_blocks=config.generator_num_residual_blocks,
@@ -236,8 +238,8 @@ class CycleGAN(nn.Module):
             padding_type=config.generator_padding_type
         )
 
-        self.discriminator_A = PatchGANDiscriminator(
-            input_channels=config.input_channels, 
+        self.discriminator_src = PatchGANDiscriminator(
+            input_channels=config.in_channels, 
             base_channels=config.discriminator_base_channels, 
             depth=config.discriminator_depth, 
             kernel_size=config.discriminator_kernel_size, 
@@ -245,21 +247,11 @@ class CycleGAN(nn.Module):
             leaky_relu_slope=config.discriminator_leaky_relu_slope
         )
 
-        self.discriminator_B = PatchGANDiscriminator(
-            input_channels=config.input_channels, 
+        self.discriminator_tgt = PatchGANDiscriminator(
+            input_channels=config.in_channels, 
             base_channels=config.discriminator_base_channels, 
             depth=config.discriminator_depth, 
             kernel_size=config.discriminator_kernel_size, 
             padding=config.discriminator_padding, 
             leaky_relu_slope=config.discriminator_leaky_relu_slope
         )
-
-
-if __name__ == "__main__":
-
-    rand = torch.rand(4,3,128,128)
-    model = ResNetGenerator()
-    out = model(rand)
-    print(out.shape)
-
-    # print(model)
