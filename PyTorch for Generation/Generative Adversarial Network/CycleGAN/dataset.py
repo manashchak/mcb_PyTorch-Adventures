@@ -37,7 +37,7 @@ class Src2TgtDataset(Dataset):
         path_to_src_img = random.sample(self.path_to_src_imgs, k=1)[0]
         path_to_tgt_img = random.sample(self.path_to_tgt_imgs, k=1)[0]
 
-        src = self.transforms(Image.open(path_to_src_img))
-        tgt = self.transforms(Image.open(path_to_tgt_img))
+        src = self.transforms(Image.open(path_to_src_img).convert("RGB"))
+        tgt = self.transforms(Image.open(path_to_tgt_img).convert("RGB"))
 
         return src, tgt

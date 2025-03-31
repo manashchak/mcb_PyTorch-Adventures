@@ -20,7 +20,7 @@ from utils import load_testing_samples
 #######################
 experiment_name = "landscape2monet"
 working_directory = "work_dir"
-training_iterations = 10000
+training_iterations = 25000
 save_gen_iterations = 250
 logging_iterations = 10
 batch_size = 16
@@ -197,11 +197,13 @@ while train:
                 style_transfers = accelerator.unwrap_model(model).generator_src2tgt(test_samples.to(accelerator.device))
             
             ### Rescale from -1 to 1 to 0 to 255 ###
+            test_samples = torch.clamp(test_samples, -1., 1.)
             test_samples_vis = (test_samples + 1) / 2
             test_samples_vis = test_samples_vis.cpu().permute(0,2,3,1).numpy()
             test_samples_vis = (255 * test_samples_vis).astype(np.uint8)
             test_samples_vis = [Image.fromarray(img).convert("RGB") for img in test_samples_vis]
 
+            style_transfers = torch.clamp(style_transfers, -1., 1.)
             style_transfers_vis = (style_transfers + 1) / 2
             style_transfers_vis = style_transfers_vis.cpu().permute(0,2,3,1).numpy()
             style_transfers_vis = (255 * style_transfers_vis).astype(np.uint8)
@@ -225,6 +227,11 @@ while train:
 
             plt.tight_layout()
             plt.savefig(os.path.join("gens", f"iteration_{completed_steps}.png"))
+
+        if completed_steps  >= training_iterations:
+            train = False
+            accelerator.print("Completed Training")
+            break 
 
         accelerator.wait_for_everyone()
         completed_steps += 1
