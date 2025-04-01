@@ -22,11 +22,11 @@ def ctc_loss(log_probs, targets, input_lengths, target_lengths, blank=0, reducti
     seq_len, batch_size, num_classes = log_probs.shape
     B = torch.arange(batch_size)
     
-    ### _t_a_r_g_e_t_s_: [28, 1, 17, 21, 28] -> Append a blank token at the end (we could really use anything, doesnt matter) ###
+    ### _t_a_r_g_e_t_s_: [28, 1, 17, 21, 0] -> Append a blank token at the end (we could really use anything, doesnt matter) ###
     ### its just a placeholder so our indexing is happy, we will never use this token anywhere or include it in the loss
     _t_a_r_g_e_t_s_ = torch.cat([targets, torch.zeros(batch_size, 1, device=log_probs.device, dtype=torch.long)], dim=-1)
 
-    ### _t_a_r_g_e_t_s_: [0, 28, 0, 1, 0, 17, 0, 21, 0, 28] -> Insert blank tokens in between targets
+    ### _t_a_r_g_e_t_s_: [0, 28, 0, 1, 0, 17, 0, 21, 0, 0] -> Insert blank tokens in between targets
     _t_a_r_g_e_t_s_ = torch.stack([torch.full_like(_t_a_r_g_e_t_s_, blank), _t_a_r_g_e_t_s_], dim=-1).flatten(start_dim=-2)
 
     ### Get flag for if we have two consecutive labels (AA) or different labels (AB) ###
@@ -35,7 +35,7 @@ def ctc_loss(log_probs, targets, input_lengths, target_lengths, blank=0, reducti
 
     ### Copmaring: 
     ### _t_a_r_g_e_t_s_[:, :-2] -> [0, 28, 0, 1, 0, 17, 0, 21]
-    ### _t_a_r_g_e_t_s_[:, 2:]  -> [0, 1, 0, 17, 0, 21, 0, 28]
+    ### _t_a_r_g_e_t_s_[:, 2:]  -> [0, 1, 0, 17, 0, 21, 0, 0]
     ###                            [T, F, T, F, T, F, T, F]
 
     ### Prepend the Falses as a placeholder:
@@ -48,22 +48,22 @@ def ctc_loss(log_probs, targets, input_lengths, target_lengths, blank=0, reducti
 
     ### _t_a_r_g_e_t_s_.expand(seq_len, -1, -1) (let the seq_len of the model logits be 6)
 
-    ### |0, 28, 0, 1, 0, 17, 0, 21, 0, 28|
-    ### |0, 28, 0, 1, 0, 17, 0, 21, 0, 28|
-    ### |0, 28, 0, 1, 0, 17, 0, 21, 0, 28|
-    ### |0, 28, 0, 1, 0, 17, 0, 21, 0, 28|
-    ### |0, 28, 0, 1, 0, 17, 0, 21, 0, 28|
-    ### |0, 28, 0, 1, 0, 17, 0, 21, 0, 28|
+    ### |0, 28, 0, 1, 0, 17, 0, 21, 0, 0|
+    ### |0, 28, 0, 1, 0, 17, 0, 21, 0, 0|
+    ### |0, 28, 0, 1, 0, 17, 0, 21, 0, 0|
+    ### |0, 28, 0, 1, 0, 17, 0, 21, 0, 0|
+    ### |0, 28, 0, 1, 0, 17, 0, 21, 0, 0|
+    ### |0, 28, 0, 1, 0, 17, 0, 21, 0, 0|
 
     ### Then we gather the probability of these indexes from logprobs at every timestep along our logits ###
     ### log_probs.gather(dim=-1, index=_t_a_r_g_e_t_s_.expand(seq_len, -1, -1))
 
-    ### |p(0|T=0), p(28|T=0), p(0|T=0), p(1|T=0), p(0|T=0), p(17|T=0), p(0|T=0), p(21|T=0), p(0|T=0), p(28|T=0)|
-    ### |p(0|T=1), p(28|T=1), p(0|T=1), p(1|T=1), p(0|T=1), p(17|T=1), p(0|T=1), p(21|T=1), p(0|T=1), p(28|T=1)|
-    ### |p(0|T=2), p(28|T=2), p(0|T=2), p(1|T=2), p(0|T=2), p(17|T=2), p(0|T=2), p(21|T=2), p(0|T=2), p(28|T=2)|
-    ### |p(0|T=3), p(28|T=3), p(0|T=3), p(1|T=3), p(0|T=3), p(17|T=3), p(0|T=3), p(21|T=3), p(0|T=3), p(28|T=3)|
-    ### |p(0|T=4), p(28|T=4), p(0|T=4), p(1|T=4), p(0|T=4), p(17|T=4), p(0|T=4), p(21|T=4), p(0|T=4), p(28|T=4)|
-    ### |p(0|T=5), p(28|T=5), p(0|T=5), p(1|T=5), p(0|T=5), p(17|T=5), p(0|T=5), p(21|T=5), p(0|T=5), p(28|T=5)|
+    ### |p(0|T=0), p(28|T=0), p(0|T=0), p(1|T=0), p(0|T=0), p(17|T=0), p(0|T=0), p(21|T=0), p(0|T=0), p(0|T=0)|
+    ### |p(0|T=1), p(28|T=1), p(0|T=1), p(1|T=1), p(0|T=1), p(17|T=1), p(0|T=1), p(21|T=1), p(0|T=1), p(0|T=1)|
+    ### |p(0|T=2), p(28|T=2), p(0|T=2), p(1|T=2), p(0|T=2), p(17|T=2), p(0|T=2), p(21|T=2), p(0|T=2), p(0|T=2)|
+    ### |p(0|T=3), p(28|T=3), p(0|T=3), p(1|T=3), p(0|T=3), p(17|T=3), p(0|T=3), p(21|T=3), p(0|T=3), p(0|T=3)|
+    ### |p(0|T=4), p(28|T=4), p(0|T=4), p(1|T=4), p(0|T=4), p(17|T=4), p(0|T=4), p(21|T=4), p(0|T=4), p(0|T=4)|
+    ### |p(0|T=5), p(28|T=5), p(0|T=5), p(1|T=5), p(0|T=5), p(17|T=5), p(0|T=5), p(21|T=5), p(0|T=5), p(0|T=5)|
 
     log_probs_ = log_probs.gather(dim=-1, index=_t_a_r_g_e_t_s_.expand(seq_len, -1, -1))
     
