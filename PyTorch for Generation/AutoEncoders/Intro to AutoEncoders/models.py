@@ -58,7 +58,7 @@ class ConvolutionalAutoEncoder(nn.Module):
         self.encoder_conv = nn.Sequential(
 
             ### Convolutional Encoding ###
-            nn.Conv2d(in_channels=in_channels, out_channels=8, kernel_size=5, stride=2, padding=1, bias=False), 
+            nn.Conv2d(in_channels=in_channels, out_channels=8, kernel_size=3, stride=2, padding=1, bias=False), 
             nn.BatchNorm2d(8),
             nn.ReLU(), 
 
@@ -74,15 +74,15 @@ class ConvolutionalAutoEncoder(nn.Module):
         )
 
         self.decoder_conv = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=self.bottleneck, out_channels=16, kernel_size=3, stride=2, bias=False),
+            nn.ConvTranspose2d(in_channels=self.bottleneck, out_channels=16, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
             nn.BatchNorm2d(16),
             nn.ReLU(), 
             
-            nn.ConvTranspose2d(in_channels=16, out_channels=8, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.ConvTranspose2d(in_channels=16, out_channels=8, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
             nn.BatchNorm2d(8),
             nn.ReLU(),
             
-            nn.ConvTranspose2d(in_channels=8, out_channels=in_channels, kernel_size=2, stride=2, padding=1),
+            nn.ConvTranspose2d(in_channels=8, out_channels=in_channels, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.Sigmoid()
         )
     
@@ -185,7 +185,7 @@ class ConvolutionalVartiationalAutoEncoder(nn.Module):
         self.encoder_conv = nn.Sequential(
 
             ### Convolutional Encoding ###
-            nn.Conv2d(in_channels=in_channels, out_channels=8, kernel_size=5, stride=2, padding=1, bias=False), 
+            nn.Conv2d(in_channels=in_channels, out_channels=8, kernel_size=3, stride=2, padding=1, bias=False), 
             nn.BatchNorm2d(8),
             nn.ReLU(), 
 
@@ -207,15 +207,15 @@ class ConvolutionalVartiationalAutoEncoder(nn.Module):
         #########################################################
 
         self.decoder_conv = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=self.bottleneck, out_channels=16, kernel_size=3, stride=2, bias=False),
+            nn.ConvTranspose2d(in_channels=self.bottleneck, out_channels=16, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
             nn.BatchNorm2d(16),
             nn.ReLU(), 
             
-            nn.ConvTranspose2d(in_channels=16, out_channels=8, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.ConvTranspose2d(in_channels=16, out_channels=8, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
             nn.BatchNorm2d(8),
             nn.ReLU(),
             
-            nn.ConvTranspose2d(in_channels=8, out_channels=in_channels, kernel_size=2, stride=2, padding=1),
+            nn.ConvTranspose2d(in_channels=8, out_channels=in_channels, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.Sigmoid()
         )
     
@@ -410,7 +410,7 @@ class ConvolutionalVectorQuantizedVAE(nn.Module):
         self.encoder_conv = nn.Sequential(
 
             ### Convolutional Encoding ###
-            nn.Conv2d(in_channels=in_channels, out_channels=8, kernel_size=5, stride=2, padding=1, bias=False), 
+            nn.Conv2d(in_channels=in_channels, out_channels=8, kernel_size=3, stride=2, padding=1, bias=False), 
             nn.BatchNorm2d(8),
             nn.ReLU(), 
 
@@ -432,15 +432,15 @@ class ConvolutionalVectorQuantizedVAE(nn.Module):
         #########################################################
 
         self.decoder_conv = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=self.bottleneck, out_channels=16, kernel_size=3, stride=2, bias=False),
+            nn.ConvTranspose2d(in_channels=self.bottleneck, out_channels=16, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
             nn.BatchNorm2d(16),
             nn.ReLU(), 
             
-            nn.ConvTranspose2d(in_channels=16, out_channels=8, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.ConvTranspose2d(in_channels=16, out_channels=8, kernel_size=3, stride=2, padding=1, output_padding=1, bias=False),
             nn.BatchNorm2d(8),
             nn.ReLU(),
             
-            nn.ConvTranspose2d(in_channels=8, out_channels=in_channels, kernel_size=2, stride=2, padding=1),
+            nn.ConvTranspose2d(in_channels=8, out_channels=in_channels, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.Sigmoid()
         )
     
@@ -494,3 +494,5 @@ class ConvolutionalVectorQuantizedVAE(nn.Module):
         latents = self.forward_enc(x)
         quantized_latents, decoded, codebook_loss, commitment_loss = self.forward_dec(latents)
         return latents, quantized_latents, decoded, codebook_loss, commitment_loss
+
+
