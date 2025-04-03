@@ -82,7 +82,7 @@ There are a few other datasets that we will use but are inconsistent to automati
 - [**Intro to Audio Processing in PyTorch**](PyTorch%20for%20Audio/Intro%20to%20Audio%20Processing/)
 - **Audio Processing From Scratch**
 - [**Connectionist Temporal Classification Loss**](PyTorch%20for%20Audio/Connectionist%20Temporal%20Classification/)
-- **Intro to Automatic Speech Recognition**
+- [**Intro to Automatic Speech Recognition**](PyTorch%20for%20Audio/Intro%20to%20Automatic%20Speech%20Recognition/)
 - [**Quantized Audio Pre-Training: Wav2Vec2**](PyTorch%20for%20Audio/Wav2Vec2/)
 - **EnCodec**
 - **WaveNet**
@@ -91,7 +91,6 @@ There are a few other datasets that we will use but are inconsistent to automati
 - ### AutoEncoders ##
   - [**Intro to AutoEncoders**](PyTorch%20for%20Generation/AutoEncoders/Intro%20to%20AutoEncoders/Intro_To_AutoEncoders.ipynb)&nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1899201881890578688)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://youtu.be/p7yUWIySj8o)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1DldfPN9q1uSA4UkZYHV-3Ms5be333EKN?usp=sharing)
   - [**Variational AutoEncoders**](PyTorch%20for%20Generation/AutoEncoders/Intro%20to%20AutoEncoders/Variational_AutoEncoders.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1_NLc6g5UJ-tmRUXZbF5r1FgWoEApaLmH?usp=sharing)
-  - **Beta-VAE**
   - [**Vector-Quantized Variational Autoencoders**](PyTorch%20for%20Generation/AutoEncoders/Intro%20to%20AutoEncoders/Vector_Quantized_Variational_AutoEncoders.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1QqdHlnfJV5BATUymrXy-wi3F8YUIQFpl?usp=sharing)
   - **Gumbel Softmax Vector Quantization**
   - **Residual Vector Quantization**
@@ -117,7 +116,7 @@ There are a few other datasets that we will use but are inconsistent to automati
   - [**Attention is All You Need**](PyTorch%20for%20Transformers/Attention%20Mechanisms/Attention/) &nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1893829898277671057)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://youtu.be/JXY5CmiK3LI)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1vJAlxRehKG7yzAFJTTPa4Ecew0cxc1fL?usp=sharing)
   - [**Windowed Attention**](PyTorch%20for%20Transformers/Attention%20Mechanisms/Sliding%20Window%20Attention/)
   - **LinFormer**
-  - **ConvFormer**
+  - **ConFormer**
 
 - **Positional Embeddings**
   - **Sinusoial Encodings**
@@ -131,14 +130,16 @@ There are a few other datasets that we will use but are inconsistent to automati
   - **Layer Norm**
   - **RMS Norm**
   
-- **Optimization**
+- **Inference Optimization**
   - **KV Cache**
+  - **Multi-Head Latent Attention**
 
 ## Reinforcement Learning
 - ### Model-Based Learning 
   - [**Policy Iteration**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Based%20Learning/intro_rl_and_policy_iter.ipynb)
   - [**Value Iteration**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Based%20Learning/value_iteration.ipynb)
 - ### Model-Free Learning 
+  - **Monte Carlo**
   - **Temporal Difference Learning**
   - **SARSA**
   - **Q Learning**
