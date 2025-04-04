@@ -11,7 +11,7 @@ What we will explore is:
 - Model Free Learning
   - Monte Carlo
   - TD Learning
-  - SARSA
-  - Q Learning
+      - SARSA (On-Policy)
+      - Q Learning (Off-Policy)
 
 
