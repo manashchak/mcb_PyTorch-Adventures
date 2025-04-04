@@ -136,14 +136,14 @@ There are a few other datasets that we will use but are inconsistent to automati
 
 ## Reinforcement Learning
 - ### Model-Based Learning 
-  - [**Policy Iteration**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Based%20Learning/intro_rl_and_policy_iter.ipynb)
-  - [**Value Iteration**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Based%20Learning/value_iteration.ipynb)
+  - [**Policy Iteration**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Based%20Learning/intro_rl_and_policy_iter.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1Up4FwHlwhh8o2961Ka1D3Kf7EOKgPp6x?usp=sharing)
+  - [**Value Iteration**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Based%20Learning/value_iteration.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1H6ElFJXbRFQtmUst9IPlxiLw-aZkg0ho?usp=sharing)
 - ### Model-Free Learning 
-  - [**Monte Carlo**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/monte_carlo.ipynb)
-  - **Temporal Difference Learning**
-  - **SARSA**
-  - **Q Learning**
-- **Deep Reinforcement Learning**
+  - [**Monte Carlo**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/monte_carlo.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SttDsqUIZcZUZzh8p5Ir_rKdY9kcIK6O?usp=sharing)
+  - [**SARSA**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/sarsa.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1vGk4dck6EAXvlff6RJI9MMWayZ1ixpRb?usp=sharing)
+  - [**Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/q_learning.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pH5knVA5Vc4hZSUM_GSv-sp58BeNHsMj?usp=sharing)
+  
+- **Intro to Deep Reinforcement Learning**
   - **Deep Q Learning**
   - **Double Deep Q Learning**
   - **Dueling Deep Q Learning**
