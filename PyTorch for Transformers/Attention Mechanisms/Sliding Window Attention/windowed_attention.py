@@ -342,15 +342,16 @@ class WindowedAttention(nn.Module):
         if self.causal:
             combined_mask = (combined_mask | causal_mask)
 
-        ### Fill with -inf for softmax computation ###
-        attention_scores = attention_scores.masked_fill(combined_mask, float("-inf"))
+        ### Fill with -inf (the smallest values for the dtype) for softmax computation ###
+        mask_value = -torch.finfo(attention_scores.dtype).max
+        attention_scores = attention_scores.masked_fill(combined_mask, mask_value)
 
         ### Compute Softmax ###
         attention_scores = attention_scores.softmax(dim=-1)
 
-        ### Incase a full row was zeroed out, it will return nan during softmax, we can just set them to 0 ###
-        if torch.any(torch.isnan(attention_scores)):
-            attention_scores = torch.nan_to_num(attention_scores, nan=0.0, posinf=0, neginf=0) 
+        # ### Incase a full row was zeroed out, it will return nan during softmax, we can just set them to 0 ###
+        # if torch.any(torch.isnan(attention_scores)):
+        #     attention_scores = torch.nan_to_num(attention_scores, nan=0.0, posinf=0, neginf=0) 
 
         ### Dropout on Attention ###
         attention_scores = self.dropout(attention_scores)
@@ -368,3 +369,10 @@ class WindowedAttention(nn.Module):
         output = self.out_proj(output)
     
         return output
+    
+if __name__ == "__main__":
+
+    rand = torch.randn(4,256,768)
+    attention = WindowedAttention(window_size=64)
+    out = attention(rand)
+    print(out)
