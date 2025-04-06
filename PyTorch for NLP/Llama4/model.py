@@ -19,25 +19,16 @@ class Llama4TextConfig:
     num_attention_heads: int = 40
     num_key_value_heads: int = 8
     head_dim: int = 128
-    hidden_act: str = "silu"
     max_position_embeddings: int = 4096 * 32
-    initializer_range: float = 0.02
     rms_norm_eps: float = 1e-5
-    use_cache: bool = True
-    pad_token_id: Optional[int] = None
+    pad_token_id: int = 200018
     bos_token_id: int = 1
     eos_token_id: int = 2
-    tie_word_embeddings: bool = False
     rope_theta: float = 500000
     attention_dropout: float = 0.0
     num_experts_per_tok: int = 1
     num_local_experts: int = 16
     use_qk_norm: bool = True
-    output_router_logits: bool = False
-    router_aux_loss_coef: float = 0.001
-    router_jitter_noise: float = 0.0
-    rope_scaling: Optional[dict] = None
-    no_rope_layers: Optional[List[int]] = None
     no_rope_layer_interval: int = 4
     attention_chunk_size: int = 8192
     attn_temperature_tuning: float = 4
@@ -47,7 +38,6 @@ class Llama4TextConfig:
 @dataclass
 class Llama4VisionConfig:
     hidden_size: int = 768
-    hidden_act: str = "gelu"
     num_hidden_layers: int = 34
     num_attention_heads: int = 16
     num_channels: int = 3
@@ -56,13 +46,9 @@ class Llama4VisionConfig:
     image_size: int = 448
     patch_size: int = 14
     norm_eps: float = 1e-5
-    vision_feature_layer: int = -1
-    vision_feature_select_strategy: str = "default"
-    initializer_range: float = 0.02
     pixel_shuffle_ratio: float = 0.5
     projector_input_dim: int = 4096
     projector_output_dim: int = 4096
-    multi_modal_projector_bias: bool = False
     projector_dropout: float = 0.0
     attention_dropout: float = 0.0
     rope_theta: int = 10000
@@ -185,22 +171,22 @@ class Llama4TextMoe(nn.Module):
         ### Repeating the number of rows for the number of experts we have!
         router_indices = torch.arange(tokens_per_expert, device=hidden_states.device).unsqueeze(0).expand(router_scores.size(0), -1)
         
-        ### Step 6: Now when we grab our embeddings with these indexes, we have the embedding dimension as well. Our Data is the shape
+        ### Step 5: Now when we grab our embeddings with these indexes, we have the embedding dimension as well. Our Data is the shape
         ### of (Num Tokens x Embed Dim) Lets go ahead and flatten our router indicies, add a dimension for the embed dim and repeat. 
         ### This means we will end with a (Num_Experts*Num_tokens x Embed Dim) Matrix at the end. 
         router_indices = router_indices.reshape(-1,1).expand(-1, self.hidden_dim)
 
-        ### Step 5: Update our Router Scores to be between 0 and 1. All our non topk scores (that are currently -inf) will become 0!
+        ### Step 6: Update our Router Scores to be between 0 and 1. All our non topk scores (that are currently -inf) will become 0!
         router_scores = torch.sigmoid(router_scores.float()).to(hidden_states.dtype)
 
-        ### Step 6: Gather All Our Hidden States By our router_indices (repeating all tokens for each Expert!)
+        ### Step 7: Gather All Our Hidden States By our router_indices (repeating all tokens for each Expert!)
         routed_in = torch.gather(
             input=hidden_states, 
             dim=0, 
             index=router_indices
         )
 
-        ### Step 7: We now have repeated all our token embeddings for every expert. But we only want to keep the experts that
+        ### Step 8: We now have repeated all our token embeddings for every expert. But we only want to keep the experts that
         ### were in our TopK. Well, we hav eour router_scores that is 0 for non Topk expert indicies. We can therefore go 
         ### ahead and multiply, as it will 0 out our embeddings assigned to a an expert that was not in its TopK
         ### This also multiplies the embeddings from their topk experts by the weights assigned by the router
@@ -1294,12 +1280,11 @@ if __name__ == "__main__":
                                    
     vision_config = Llama4VisionConfig(image_size=448,
                                        patch_size=14, 
-                                       num_hidden_layers=2,
-                                       )
+                                       num_hidden_layers=2)
     
     model = Llama4ForConditionalGeneration(vision_config, text_config)
 
-    input_ids = torch.randint(0,200000, size=(4,128))   
+    input_ids = torch.randint(0,200000, size=(4,2048))   
     prepend_image_tokens = torch.tensor([200080] + [200092 for _ in range(256)] + [200081], dtype=torch.long).unsqueeze(0).expand(4,-1)
     input_ids = torch.cat([prepend_image_tokens, input_ids], dim=-1)
 
