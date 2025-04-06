@@ -5,15 +5,16 @@ as well as the Meta team that published the model!
 """
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from dataclasses import dataclass
 from typing import Optional, List, Union
 
 @dataclass
-class ModelConfig:
+class Llama4TextConfig:
     vocab_size: int = 202048
-    hidden_size: int = 768#5120
-    intermediate_size: int = 768*4#8192
-    intermediate_size_mlp: int = 768*4#16384
+    hidden_size: int = 5120
+    intermediate_size: int = 8192
+    intermediate_size_mlp: int = 16384
     num_hidden_layers: int = 48
     num_attention_heads: int = 40
     num_key_value_heads: int = 8
@@ -42,7 +43,30 @@ class ModelConfig:
     attn_temperature_tuning: float = 4
     floor_scale: int = 8192
     attn_scale: float = 0.1
-    
+
+@dataclass
+class Llama4VisionConfig:
+    hidden_size: int = 768
+    hidden_act: str = "gelu"
+    num_hidden_layers: int = 34
+    num_attention_heads: int = 16
+    num_channels: int = 3
+    intermediate_size: int = 5632
+    vision_output_dim: int = 7680
+    image_size: int = 448
+    patch_size: int = 14
+    norm_eps: float = 1e-5
+    vision_feature_layer: int = -1
+    vision_feature_select_strategy: str = "default"
+    initializer_range: float = 0.02
+    pixel_shuffle_ratio: float = 0.5
+    projector_input_dim: int = 4096
+    projector_output_dim: int = 4096
+    multi_modal_projector_bias: bool = False
+    projector_dropout: float = 0.0
+    attention_dropout: float = 0.0
+    rope_theta: int = 10000
+
 class Llama4TextExperts(nn.Module):
 
     def __init__(self, config):
@@ -362,6 +386,9 @@ class Cache:
         self.key_cache = [torch.tensor([]) for _ in range(config.num_hidden_layers)]
         self.value_cache = [torch.tensor([]) for _ in range(config.num_hidden_layers)]
 
+    def __repr__(self):        
+        return f"DyanmicCache(Num_Layers: {len(self.key_cache)} | Cached Tokens: {self.key_cache[0].shape[2]})"
+        
     def update(self, key_states, value_states, layer_idx):
         
         ### Only iterate num tokens seen on the first layer ###
@@ -579,7 +606,8 @@ class Llama4TextModel(nn.Module):
         self.rotary_emb = Llama4TextRotaryEmbedding(config)
 
     def forward(self,
-                input_ids, 
+                input_ids=None, 
+                input_embeds=None,
                 attention_mask=None, 
                 position_ids=None, 
                 past_key_values=None, 
@@ -590,7 +618,10 @@ class Llama4TextModel(nn.Module):
             past_key_values = Cache(self.config)
 
         ### Get Input Embeddings ###
-        hidden_states = self.embed_tokens(input_ids)
+        if input_embeds is None:
+            hidden_states = self.embed_tokens(input_ids)
+        else:
+            hidden_states = input_embeds
 
         ### Set up Cache Position ###
         if cache_position is None:
@@ -614,7 +645,7 @@ class Llama4TextModel(nn.Module):
         for layer in self.layers:
             hidden_states = layer(hidden_states, 
                                   attention_mask, 
-                                  chunked_attention_mask, 
+                                  chunked_attention_mask if chunked_attention_mask is not None else causal_mask, 
                                   past_key_values, 
                                   cache_position, 
                                   freq_cis)
@@ -782,26 +813,510 @@ class Llama4ForCausalLM(nn.Module):
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
     def forward(self, 
-                input_ids, 
+                input_ids=None, 
+                input_embeds=None,
                 attention_mask=None, 
                 position_ids=None, 
                 past_key_values=None):
         
         outputs, past_key_values = self.model(
             input_ids, 
+            input_embeds,
             attention_mask=attention_mask, 
             position_ids=position_ids, 
             past_key_values=past_key_values
         )
 
         logits = self.lm_head(outputs)
-        print(logits.shape)
+ 
         return logits, past_key_values
 
+class Llama4VisionMLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self.activation_fn = nn.GELU()  
+        self.fc1 = nn.Linear(config.hidden_size, config.intermediate_size, bias=True)
+        self.fc2 = nn.Linear(config.intermediate_size, config.hidden_size, bias=True)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.fc1(hidden_states)
+        hidden_states = self.activation_fn(hidden_states)
+        hidden_states = self.fc2(hidden_states)
+        return hidden_states
+    
+class Llama4VisionMLP2(nn.Module):
+
+    """
+    Pretty standard MLP Layer found in most things like the Vision Transformer
+
+    I feel like there is a bug in Huggingface regarding the implementation of this, 
+    so i am just manually passing in the in_features/out_features
+    https://github.com/huggingface/transformers/issues/37321
+    """
+    def __init__(self, in_features, out_features, config):
+        super(Llama4VisionMLP2, self).__init__()
+
+        self.hidden_size = config.hidden_size
+        self.intermediate_size = config.intermediate_size
+        self.fc1 = nn.Linear(in_features, out_features, bias=False)
+        self.fc2 = nn.Linear(out_features, out_features, bias=False)
+        self.activation_fn = nn.GELU()
+        self.dropout = nn.Dropout(config.projector_dropout)
+
+    def forward(self, hidden_states):
+
+        hidden_states = self.activation_fn(self.fc1(hidden_states))
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.activation_fn(self.fc2(hidden_states))
+        return hidden_states
+    
+class Llama4MultiModalProjector(nn.Module):
+    def __init__(self, vision_config, text_config):
+        super(Llama4MultiModalProjector, self).__init__()
+        self.linear_1 = nn.Linear(
+            vision_config.projector_output_dim, 
+            text_config.hidden_size, 
+            bias=False
+        )
+
+    def forward(self, x):
+        return self.linear_1(x)
+    
+class Llama4VisionPixelShuffleMLP(nn.Module):
+
+    def __init__(self, config):
+        super(Llama4VisionPixelShuffleMLP, self).__init__()
+        self.pixel_shuffle_ratio = config.pixel_shuffle_ratio
+        self.inner_dim = int(config.hidden_size//(self.pixel_shuffle_ratio**2))
+        self.output_dim = config.projector_output_dim
+        self.mlp = Llama4VisionMLP2(self.inner_dim, self.output_dim, config)
+
+    def _pixel_shuffle(self, x):
+
+        ### Data is already in ViT Shape (B x Num Patches x Embed Dim) ###
+        ### We want to convert back to (B x sqrt(Num Patches) x sqrt(Num Patches) x Embed Dim) )
+        batch_size, num_patches, embed_dim = x.shape
+        patch_size = int(num_patches**0.5)
+
+        ### Reshape Tensor ###
+        x = x.reshape(batch_size, patch_size, patch_size, -1)
+
+        ### Pixel Shuffle Moves Information (pixels) from the channel dimension to the spatial dimension ###
+        ### Or it moves pixels from spatial to channels depending on ratio ###
+        ### Lets Do that on the last dimension first ###
+        batch_size, height, width, channels = x.shape
+        x = x.reshape(batch_size, height, int(width * self.pixel_shuffle_ratio), int(channels/self.pixel_shuffle_ratio))
+
+        ### Lets reshape this to expose the height to our channels and pixel shuffle again ###
+        x = x.transpose(1,2)
+        x = x.reshape(batch_size, int(width*self.pixel_shuffle_ratio), int(height*self.pixel_shuffle_ratio), int(channels/(self.pixel_shuffle_ratio**2)))
+        
+        ### Finall reshape back to image shape (B x H x W x C) and put back to sequence shape ###
+        x = x.permute(0,2,1,3)
+        
+        x = x.reshape(batch_size, -1, x.shape[-1])
+        
+        return x
+    
+    def forward(self, x):
+
+        ### Apply Pixel Shuffle ###
+        shuffled = self._pixel_shuffle(x)
+
+        ### Map Channels (embed_dim) to our target out_features ###
+        proj = self.mlp(shuffled)
+
+        return proj
+
+class Llama4VisionRotaryEmbedding(nn.Module):
+    def __init__(self, config):
+        super(Llama4VisionRotaryEmbedding, self).__init__()
+
+        ### Get Number of Patches in Image and create Arange array ###
+        index = config.image_size // config.patch_size
+        image_index = torch.arange(index**2, dtype=torch.int32).reshape(index**2, 1)
+
+        ### Add on -2 Index for CLS token at the end ###
+        image_index = torch.cat([image_index, torch.tensor([-2]).reshape(-1,1)], dim=0)
+        
+        ### Remember that our X,Y coodinates get flattened to a vector in the
+        ### end so lets just compute those now. The X coordinate repeats every column
+        ### and the Y coordinate repeats every row so we can access them like this:
+        x_coord = image_index % index
+        y_coord = image_index // index
+
+        ### Get the frequency dim (per head) ###
+        freq_dim = config.hidden_size // config.num_attention_heads // 2 
+
+        ### Compute Rope Freq just like before ###
+        rope_freq = 1.0 / (config.rope_theta ** (torch.arange(0, freq_dim, 2)[:(freq_dim // 2)].float() / freq_dim))
+        
+        ### Compute Frequencies for X and Y coordinate and repeat along embed dim ###
+        ### freqs_x -> NumPatches+1, 1, freq_dim
+        ### freqs_y -> NumPatches+1, 1, freq_dim
+
+        ### Also the +1 makes sure we arent multiplying by a 0! We will keep that 0 freq for the cls token ###
+        freqs_x = ((x_coord + 1)[..., None] * rope_freq[None, None, :]).repeat_interleave(2, dim=-1)
+        freqs_y = ((y_coord + 1)[..., None] * rope_freq[None, None, :]).repeat_interleave(2, dim=-1)
+        
+        ### Concatenate X and Y Frequencies Together ###
+        ### then grab every other index so in the end we have 
+        ### half the frequencies on the x index and half from the y index
+        ### and together they provide all the positional information of that (x,y) coordinate
+        freqs = torch.cat([freqs_x, freqs_y], dim=-1)[..., ::2]
+
+        ### So even through we added our CLS Token index to the end, 
+        ### We want its position information at the beginning? 0 Frequency
+        ### Why not! Im sure it wouldnt matter either way but lets keep it like
+        ### the huggingface implementation 
+        freqs = freqs.masked_fill(image_index.reshape(-1,1,1) < 0, 0)
+
+        ### Convert Frequencies to Sin/Cos, stack and convert to complex ###
+        self.freq_cis = torch.view_as_complex(torch.stack([torch.cos(freqs), torch.sin(freqs)], dim=-1))
+    
+    def forward(self, x):
+        return self.freq_cis.to(x.device)
+
+def vision_apply_rotary_emb(
+    query, key, freqs_ci):
+
+    query_ = torch.view_as_complex(query.float().reshape(*query.shape[:-1], -1, 2))
+    key_ = torch.view_as_complex(key.float().reshape(*key.shape[:-1], -1, 2))
+
+    ### freq_ci -> (Num Patches x 1 x Head Dim), we need to add the batch dimension
+    ### because Query is (batc x num_patches x num heads x head dim)
+    freqs_ci = freqs_ci.unsqueeze(0) 
+
+    ### Multiply, convert back to real, flatten the real/complex component dimension ###
+    query_out = torch.view_as_real(query_ * freqs_ci).flatten(3)
+    key_out = torch.view_as_real(key_ * freqs_ci).flatten(3)
+
+    return query_out.type_as(query), key_out.type_as(key)  # but this drops to 8e-3
+
+class Llama4VisionAttention(nn.Module):
+
+    """
+    Standard ViT Attention Mechanism!
+    """
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self.embed_dim = config.hidden_size
+        self.num_heads = config.num_attention_heads
+        self.head_dim = config.hidden_size // config.num_attention_heads
+        self.num_key_value_groups = 1
+        self.attention_dropout = config.attention_dropout
+
+        self.q_proj = nn.Linear(self.embed_dim, self.num_heads * self.head_dim, bias=True)
+        self.k_proj = nn.Linear(self.embed_dim, self.num_heads * self.head_dim, bias=True)
+        self.v_proj = nn.Linear(self.embed_dim, self.num_heads * self.head_dim, bias=True)
+        self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.embed_dim, bias=True)
+
+    def forward(
+        self,
+        hidden_states,
+        freqs_ci,
+    ):
+        input_shape = hidden_states.shape[:-1]
+        hidden_shape = (*input_shape, -1, self.head_dim)
+
+        ## Project QKV and reshape to (B)
+        query_states = self.q_proj(hidden_states).view(hidden_shape)
+        key_states = self.k_proj(hidden_states).view(hidden_shape)
+        value_states = self.v_proj(hidden_states).view(hidden_shape)
+
+        ### Apply Rotary Embeddings
+        query_states, key_states = vision_apply_rotary_emb(query_states, key_states, freqs_ci=freqs_ci)
+
+        ### Transpose to (B x H x L x E)
+        query_states = query_states.transpose(1, 2)
+        key_states = key_states.transpose(1, 2)
+        value_states = value_states.transpose(1, 2)
+
+        ### Compute Attention ###
+        attn_output = F.scaled_dot_product_attention(query_states, key_states, value_states)
+
+        ### Return Output back to (B x Num Patches x Embed Dim) ###
+        attn_output = attn_output.reshape(*input_shape, -1)
+        attn_output = self.o_proj(attn_output)
+
+        return attn_output
+
+class Llama4VisionEncoderLayer(nn.Module):
+    def __init__(self, config):
+        super(Llama4VisionEncoderLayer, self).__init__()
+
+        self.hidden_size = config.hidden_size
+        self.self_attn = Llama4VisionAttention(config)
+        self.mlp = Llama4VisionMLP(config)
+
+        self.input_layernorm = nn.LayerNorm(config.hidden_size)
+        self.post_attention_layernorm = nn.LayerNorm(config.hidden_size)
+    
+    def forward(self, hidden_states, freqs_ci):
+
+        reisudal = hidden_states
+        hidden_states = self.input_layernorm(hidden_states)
+
+        ### Compute Attention ###
+        hidden_states = self.self_attn(
+            hidden_states, 
+            freqs_ci, 
+        )
+
+        ### Residual Connection ###
+        hidden_states = hidden_states + reisudal
+
+        ### Feed Forward ###
+        residual = hidden_states    
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states = self.mlp(hidden_states)
+        hidden_states = residual + hidden_states
+
+        return hidden_states
+    
+class Llama4VisionEncoder(nn.Module):
+
+    def __init__(self, config):
+        super(Llama4VisionEncoder, self).__init__()
+
+        self.config = config
+        self.layers = nn.ModuleList(
+            [
+                Llama4VisionEncoderLayer(config) for _ in range(config.num_hidden_layers)
+            ]
+        )
+    
+    def forward(self,
+                hidden_states, 
+                freqs_ci):
+        
+        for layer in self.layers:
+            hidden_states = layer(
+                hidden_states, freqs_ci
+            )
+
+        return hidden_states
+
+class Llama4UnfoldConvolution(nn.Module):
+
+    def __init__(self, config):
+        super(Llama4UnfoldConvolution, self).__init__()
+        
+        ### Use nn.Unfold instead of a Conv to do Patch Embedding ###
+        ### basically the same thing (as convs use nn.Unfold) ###
+        ### because convolutions ARE LINEAR LAYERS ###
+
+        self.unfold = nn.Unfold(kernel_size=config.patch_size, stride=config.patch_size)
+
+        ### Linear Projection to Wanted embed Dim ###
+        self.linear = nn.Linear(config.num_channels * config.patch_size * config.patch_size, 
+                                config.hidden_size, 
+                                bias=False)
+        
+    def forward(self, x):
+
+        ### Convert to Patches (B x C x Num Patches)###
+        x = self.unfold(x)
+        
+        ### Project to Embed Dim (reshape first to have C last) ###
+        x = self.linear(x.permute(0,2,1))
+
+        return x
+
+class Llama4VisionModel(nn.Module):
+
+    def __init__(self, config):
+        super(Llama4VisionModel, self).__init__()
+
+        ### Scale Parameter Constant (probably for scale before training) ###
+        ### We arent training so this doesnt really matter but lets keep it ###
+        ### the same! ###
+        self.scale = config.hidden_size**-0.5
+
+        ### Just Like Vision Transformer, Number of Patches + CLS Token ###
+        self.num_patches = (config.image_size // config.patch_size) ** 2 + 1
+
+        ### Patch Emebedding ###
+        self.patch_embedding = Llama4UnfoldConvolution(config)
+
+        ### CLS Token ###
+        self.class_embedding = nn.Parameter(self.scale * torch.randn(config.hidden_size))
+
+        ### Positional Info (Additional to Rotary) ###
+        self.positional_embedding_vlm = nn.Parameter(self.scale * torch.randn(self.num_patches, config.hidden_size))
+
+        ### Rotary Embeddings ###
+        self.rotary_embed = Llama4VisionRotaryEmbedding(config)
+
+        ### Layer Norm ###
+        self.layernorm_pre = nn.LayerNorm(config.hidden_size)
+        self.layernorm_post = nn.LayerNorm(config.hidden_size)
+
+        ### Encoders ###
+        self.model = Llama4VisionEncoder(config)
+        self.vision_adapter = Llama4VisionPixelShuffleMLP(config)
+
+    def forward(self, 
+                pixel_values):
+        
+        batch_size, num_channels, height, width = pixel_values.shape
+
+        ### Patchify Image to Embeddings ###
+        patch_embed = self.patch_embedding(pixel_values)
+        batch_size, num_patches, embed_dim = patch_embed.shape
+
+        ### Concat on CLS token (repeat for batches though) ##
+        ### also as we implemented in rotary, we append to the end ###
+        cls_token = self.class_embedding.expand(batch_size, 1, embed_dim)
+        hidden_state = torch.cat([patch_embed, cls_token], dim=1)
+        num_patches += 1
+
+        ### Add on Positional Embeddings ###
+        hidden_state = hidden_state + self.positional_embedding_vlm
+        
+        ### Layernorm before Encoder ###
+        hidden_state = self.layernorm_pre(hidden_state)
+
+        ### Compute frequencies for rotary ###
+        freqs_ci = self.rotary_embed(hidden_state)
+
+        ### Pass Through Model ###
+        output = self.model(
+            hidden_state, 
+            freqs_ci
+        )
+
+        ### Layernorm after output ###
+        output = self.layernorm_post(output)
+
+        ### Cut of CLS token ###
+        output = output[:, :-1]
+
+        ### Project to Embeddings ###
+        adapted = self.vision_adapter(output)
+        
+        return adapted
+        
+class Llama4ForConditionalGeneration(nn.Module):
+    def __init__(self, 
+                 vision_config, 
+                 text_config,
+                 boi_token_index=200080,
+                 eoi_token_index=200081, 
+                 image_token_index=200092):
+        super(Llama4ForConditionalGeneration, self).__init__()
+
+        ### Load Vision Model ###
+        self.vision_model = Llama4VisionModel(vision_config)
+        
+        ### Projects from Vision hidden dim to Text hidden Dim ###
+        self.multi_modal_projector = Llama4MultiModalProjector(vision_config, text_config)
+
+        ### Load Text Model ###
+        self.language_model = Llama4ForCausalLM(text_config)
+
+        self.vocab_size = text_config.vocab_size
+        self.pad_token_id = text_config.pad_token_id
+        self.boi_token_index = boi_token_index
+        self.eoi_token_index = eoi_token_index
+        self.image_token_index = image_token_index
+
+    def forward(self,
+                input_ids, 
+                pixel_values=None,
+                attention_mask=None, 
+                position_ids=None, 
+                past_key_values=None):
+
+        ### Convert Tokens to Embeddings (already has placeholder for image tokens if we are passing in image) ###
+        token_embeddings = self.language_model.model.embed_tokens(input_ids)
+        
+        if pixel_values is not None:
+
+            ### Conver Image to Pixel Values (B x Num Patches x Embed Dim) ###
+            image_features = self.vision_model(pixel_values)
+
+            ### Store Current Shape of Text ###
+            text_embed_shape = token_embeddings.shape
+
+            ### Flatten to (B*Num Patches x Embed Dim)
+            image_flat = image_features.reshape(-1, image_features.shape[-1])
+
+            ### Project Image Features to token embeddings Embed dim ###
+            proj_image_flat = self.multi_modal_projector(image_flat)
+
+            ### Find where our image_token_index is ###
+            ### The processor in huggingface will automatically insert 
+            ### tokens like <IMAGE_TOKEN> into the text. We just need to 
+            ### Copy our image tokens into those positions!
+            special_image_mask = (input_ids == self.image_token_index).unsqueeze(-1)
+            final_mask = special_image_mask.to(token_embeddings.device)
+
+            ### Flatten Input Embeddings to become (Batch*SeqLen x Embed Dim)
+            token_embeddings = token_embeddings.view(-1, token_embeddings.size(-1))
+
+            ### Flatten Final Mask to Also be Batch * Seq Len ###
+            final_mask_1d = final_mask.squeeze(-1).reshape(-1)
+
+            ### Compute Num Tokens to fill ###
+            num_tokens_to_fill = final_mask.sum()
+
+            ### Make sure number of tokens we are filling is the same as the number of image embedding tokens we have ###
+            assert num_tokens_to_fill == proj_image_flat.shape[0]
+
+            ### Expand mask to include embed dim so we can use masked_scatter_
+            expanded_mask = final_mask_1d.unsqueeze(-1).expand(-1, token_embeddings.shape[-1])
+
+            ### Copy in our Image Embeddings into our Placeholder Embeddings in our Text !!! ###
+            token_embeddings.masked_scatter_(expanded_mask, proj_image_flat)
+
+            ### Restore Orignal Shape of (B x Seq Len x Embed Dim)
+            token_embeddings = token_embeddings.reshape(text_embed_shape)
+
+        outputs, past_key_values = self.language_model(
+            input_embeds=token_embeddings,
+            attention_mask=attention_mask, 
+            position_ids=position_ids, 
+            past_key_values=past_key_values, 
+        )
+
+        return outputs, past_key_values
+    
 if __name__ == "__main__":
 
-    config = ModelConfig(num_hidden_layers=2)
-    model = Llama4ForCausalLM(config)
+
+    text_config = Llama4TextConfig(hidden_size=768, 
+                                   intermediate_size=768*4, 
+                                   intermediate_size_mlp=768*4, 
+                                   num_hidden_layers=2)
+                                   
+    vision_config = Llama4VisionConfig(image_size=448,
+                                       patch_size=14, 
+                                       num_hidden_layers=2,
+                                       )
     
-    randint = torch.randint(0,1000,size=(2,4))
-    model(randint)
+    model = Llama4ForConditionalGeneration(vision_config, text_config)
+
+    input_ids = torch.randint(0,200000, size=(4,128))   
+    prepend_image_tokens = torch.tensor([200080] + [200092 for _ in range(256)] + [200081], dtype=torch.long).unsqueeze(0).expand(4,-1)
+    input_ids = torch.cat([prepend_image_tokens, input_ids], dim=-1)
+
+
+    pixel_values = torch.randn(4,3,448,448)
+
+    ### Pass Initial input and Get Cached Key/Value ##
+    outputs, cache = model(input_ids, pixel_values)
+
+    ### Get your Next token Prediction ###
+    print("First Token Prediction")
+    pred_next_token = outputs[:, -1].argmax(axis=-1, keepdims=True)
+    print(pred_next_token)
+
+    ### Pass in New Tokens (and Cache) to predict again the next token ###
+    print("Second Token Prediction")
+    outputs, cache = model(pred_next_token, past_key_values=cache)
+    pred_next_token = outputs[:, -1].argmax(axis=-1, keepdims=True)
+    print(pred_next_token)
+    
