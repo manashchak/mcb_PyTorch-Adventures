@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass
-from typing import Optional, List, Union
 
 @dataclass
 class Llama4TextConfig:
@@ -159,7 +158,7 @@ class Llama4TextMoe(nn.Module):
         ### Basically makes sure we have -inf for the non topk tokens and its router logit otherwise!
         ### And go ahead and transpose this matrix so it finally becomes as (Num Experts x Num Tokens)
         router_scores = torch.full_like(router_logits, float("-inf")).scatter_(dim=1, index=router_indices, src=router_top_value).transpose(0,1)
-        
+       
         ### Step 4: Because we are passing in "ALL TOKENS" to every expert, lets update our router indicies to be 
         ### indexes from 0 to NUM TOKENS, repeated for EVERY Expert! It will something like:
 
@@ -178,7 +177,7 @@ class Llama4TextMoe(nn.Module):
 
         ### Step 6: Update our Router Scores to be between 0 and 1. All our non topk scores (that are currently -inf) will become 0!
         router_scores = torch.sigmoid(router_scores.float()).to(hidden_states.dtype)
-
+        
         ### Step 7: Gather All Our Hidden States By our router_indices (repeating all tokens for each Expert!)
         routed_in = torch.gather(
             input=hidden_states, 
@@ -1287,7 +1286,6 @@ if __name__ == "__main__":
     input_ids = torch.randint(0,200000, size=(4,2048))   
     prepend_image_tokens = torch.tensor([200080] + [200092 for _ in range(256)] + [200081], dtype=torch.long).unsqueeze(0).expand(4,-1)
     input_ids = torch.cat([prepend_image_tokens, input_ids], dim=-1)
-
 
     pixel_values = torch.randn(4,3,448,448)
 
