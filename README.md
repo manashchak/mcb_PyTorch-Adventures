@@ -146,10 +146,23 @@ There are a few other datasets that we will use but are inconsistent to automati
   - [**Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/q_learning.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pH5knVA5Vc4hZSUM_GSv-sp58BeNHsMj?usp=sharing)
   
 - **Intro to Deep Reinforcement Learning**
-  - **Deep Q Learning**
-  - **Double Deep Q Learning**
+  - [**Deep Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Deep%20Q-Learning/)
+  - [**Double Deep Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Double%20Deep-Q%20Learning/)
   - **Dueling Deep Q Learning**
   - **Prioritized Experience Replay**
+  - **Actor-Critic**
+
+- **Advanced Deep Reinforcement Learning**
+  - **Policy Networks**
+  - **Trust Region Policy Optimization**
+  - **Proximal Policy Optimization**
+  - **ACER**
+  - **ACKTR**
+  - **Deep Deterministic Policy Gradient**
+  - **Twin Delayed DDPG**
+  - **Soft Actor Critic**
+  - **Generative Adversarial Imitation Learning**
+  - **Hindsight Experience Replay**
 
 ## Tools
 - **Gradient Checkpointing**
