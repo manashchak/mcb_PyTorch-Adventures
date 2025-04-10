@@ -146,9 +146,9 @@ There are a few other datasets that we will use but are inconsistent to automati
   - [**Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/q_learning.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pH5knVA5Vc4hZSUM_GSv-sp58BeNHsMj?usp=sharing)
   
 - **Intro to Deep Reinforcement Learning**
-  - [**Deep Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Deep%20Q-Learning/)
-  - [**Double Deep Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Double%20Deep-Q%20Learning/)
-  - **Dueling Deep Q Learning**
+  - [**Deep Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Deep%20Q-Learning/deep_q_learning.ipynb)
+  - [**Double Deep Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Double%20Deep-Q%20Learning/double_deep_q_learning.ipynb)
+  - [**Dueling Deep Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Dueling%20Deep-Q%20Learning/dueling_deep_q_learning.ipynb)
   - **Prioritized Experience Replay**
   - **Actor-Critic**
 
