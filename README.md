@@ -150,7 +150,8 @@ There are a few other datasets that we will use but are inconsistent to automati
   - [**Deep Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Deep%20Q-Learning/deep_q_learning.ipynb)
   - [**Double Deep Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Double%20Deep-Q%20Learning/double_deep_q_learning.ipynb)
   - [**Dueling Deep Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Dueling%20Deep-Q%20Learning/dueling_deep_q_learning.ipynb)
-  - **Prioritized Experience Replay**
+  - [**Prioritized Experience Replay**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Prioritized%20Experience%20Replay/prioritized_experience_replay.ipynb)
+  - [**PER With SumTree**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Prioritized%20Experience%20Replay/sumtree_per.ipynb)
 
   #### B. Policy-Based Methods
   - **Policy Networks**
