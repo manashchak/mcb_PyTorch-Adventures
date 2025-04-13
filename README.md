@@ -143,26 +143,27 @@ There are a few other datasets that we will use but are inconsistent to automati
 - ### Model-Free Learning 
   - [**Monte Carlo**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/monte_carlo.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SttDsqUIZcZUZzh8p5Ir_rKdY9kcIK6O?usp=sharing)
   - [**SARSA**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/sarsa.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1vGk4dck6EAXvlff6RJI9MMWayZ1ixpRb?usp=sharing)
-  - [**Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/q_learning.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pH5knVA5Vc4hZSUM_GSv-sp58BeNHsMj?usp=sharing)
-  
-- **Intro to Deep Reinforcement Learning**
+  - [**Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/q_learning.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pH5knVA5Vc4hZSUM_GSv-sp58BeNHsMj?usp=sharing) 
+
+- ### Intro to Deep Reinforcement Learning
+  #### A. Value Based Methods
   - [**Deep Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Deep%20Q-Learning/deep_q_learning.ipynb)
   - [**Double Deep Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Double%20Deep-Q%20Learning/double_deep_q_learning.ipynb)
   - [**Dueling Deep Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Dueling%20Deep-Q%20Learning/dueling_deep_q_learning.ipynb)
   - **Prioritized Experience Replay**
-  - **Actor-Critic**
 
-- **Advanced Deep Reinforcement Learning**
+  #### B. Policy-Based Methods
   - **Policy Networks**
   - **Trust Region Policy Optimization**
   - **Proximal Policy Optimization**
-  - **ACER**
-  - **ACKTR**
-  - **Deep Deterministic Policy Gradient**
+  
+  #### C. Actro-Critic Methods
+  - **Actor Critic**
+  - **Actor Critic w/ Experience Replay (ACER)**
+  - **Actor-Critic using Kronecker-Factored Trust Region (ACKTR)**
+  - **Deep Deterministic Policy Gradient (DDPG)**
   - **Twin Delayed DDPG**
   - **Soft Actor Critic**
-  - **Generative Adversarial Imitation Learning**
-  - **Hindsight Experience Replay**
 
 ## Tools
 - **Gradient Checkpointing**
