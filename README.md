@@ -145,7 +145,7 @@ There are a few other datasets that we will use but are inconsistent to automati
   - [**SARSA**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/sarsa.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1vGk4dck6EAXvlff6RJI9MMWayZ1ixpRb?usp=sharing)
   - [**Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/q_learning.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pH5knVA5Vc4hZSUM_GSv-sp58BeNHsMj?usp=sharing) 
   - [**TD(N)**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/td_n.ipynb)
-  - [**TD($\lambda$) + Eligibility Traces**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/td_lambda.ipynb)
+  - [**TD(Lambda) + Eligibility Traces**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/td_lambda.ipynb)
 
 - ### Intro to Deep Reinforcement Learning
   #### A. Value Based Methods
