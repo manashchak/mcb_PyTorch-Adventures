@@ -121,7 +121,7 @@ There are a few other datasets that we will use but are inconsistent to automati
   - **ConFormer**
 
 - **Positional Embeddings**
-  - **Sinusoial Encodings**
+  - **Sinusoidal Encodings**
   - **Rotary Positional Encoding**
   - **ALiBi**
 
@@ -144,6 +144,8 @@ There are a few other datasets that we will use but are inconsistent to automati
   - [**Monte Carlo**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/monte_carlo.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SttDsqUIZcZUZzh8p5Ir_rKdY9kcIK6O?usp=sharing)
   - [**SARSA**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/sarsa.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1vGk4dck6EAXvlff6RJI9MMWayZ1ixpRb?usp=sharing)
   - [**Q Learning**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/q_learning.ipynb)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pH5knVA5Vc4hZSUM_GSv-sp58BeNHsMj?usp=sharing) 
+  - [**TD(N)**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/td_n.ipynb)
+  - [**TD($\lambda$) + Eligibility Traces**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/td_lambda.ipynb)
 
 - ### Intro to Deep Reinforcement Learning
   #### A. Value Based Methods
@@ -153,18 +155,22 @@ There are a few other datasets that we will use but are inconsistent to automati
   - [**Prioritized Experience Replay**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Prioritized%20Experience%20Replay/prioritized_experience_replay.ipynb)
   - [**PER With SumTree**](PyTorch%20for%20Reinforcement%20Learning/Intro%20to%20Deep%20Reinforcement%20Learning/Prioritized%20Experience%20Replay/sumtree_per.ipynb)
 
-  #### B. Policy-Based Methods
-  - **Policy Networks**
-  - **Trust Region Policy Optimization**
-  - **Proximal Policy Optimization**
-  
-  #### C. Actro-Critic Methods
-  - **Actor Critic**
+  #### B. Policy and Critic Based Methods
+  - [**Policy Networks (REINFORCE)**](PyTorch%20for%20Reinforcement%20Learning/Deep%20RL%20Policy%20Models/Policy%20Networks%20\(REINFORCE\)/policy_networks.ipynb)
+  - [**REINFORCE with Baseline**](PyTorch%20for%20Reinforcement%20Learning/Deep%20RL%20Policy%20Models/REINFORCE%20with%20Baseline/reinforce_with_baseline.ipynb)
+  - **Generalized Advantage Estimation (GAE)**
+  - **Actor-Critic**
+
+- ### Advanced Deep Reinforcement Learning
+  - **Synchronous Actor-Critic (A2C)**
+  - **Asynchronous Actor-Critic (A3C)**
+  - **Trust Region Policy Optimization (TRPO)**
+  - **Proximal Policy Optimization (PPO)**
   - **Actor Critic w/ Experience Replay (ACER)**
   - **Actor-Critic using Kronecker-Factored Trust Region (ACKTR)**
   - **Deep Deterministic Policy Gradient (DDPG)**
-  - **Twin Delayed DDPG**
-  - **Soft Actor Critic**
+  - **Twin Delayed DDPG (TD3)**
+  - **Soft Actor Critic (SAC)**
 
 ## Tools
 - **Gradient Checkpointing**
