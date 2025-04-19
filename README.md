@@ -162,8 +162,8 @@ There are a few other datasets that we will use but are inconsistent to automati
   - [**Vanilla Actor-Critic**](PyTorch%20for%20Reinforcement%20Learning/Deep%20RL%20Policy%20Models/Vanilla%20Actor%20Critic/actor_critic.ipynb)
 
 - ### Advanced Deep Reinforcement Learning
-  - **Synchronous Actor-Critic (A2C)**
-  - **Asynchronous Actor-Critic (A3C)**
+  - [**Synchronous Actor-Critic (A2C)**](PyTorch%20for%20Reinforcement%20Learning/Deep%20RL%20Policy%20Models/A2C/a2c.ipynb)
+
   - **Trust Region Policy Optimization (TRPO)**
   - **Proximal Policy Optimization (PPO)**
   - **Actor Critic w/ Experience Replay (ACER)**
