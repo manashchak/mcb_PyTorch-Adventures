@@ -159,7 +159,7 @@ There are a few other datasets that we will use but are inconsistent to automati
   - [**Policy Networks (REINFORCE)**](PyTorch%20for%20Reinforcement%20Learning/Deep%20RL%20Policy%20Models/Policy%20Networks%20\(REINFORCE\)/policy_networks.ipynb)
   - [**REINFORCE with Baseline**](PyTorch%20for%20Reinforcement%20Learning/Deep%20RL%20Policy%20Models/REINFORCE%20with%20Baseline/reinforce_with_baseline.ipynb)
   - [**Generalized Advantage Estimation (GAE)**](PyTorch%20for%20Reinforcement%20Learning/Deep%20RL%20Policy%20Models/Generalized%20Advantage%20Estimate/generalized_advantage_estimation.ipynb)
-  - [**Vanilla Actor-Critic**](PyTorch%20for%20Reinforcement%20Learning/Actor%20Critic/)
+  - [**Vanilla Actor-Critic**](PyTorch%20for%20Reinforcement%20Learning/Deep%20RL%20Policy%20Models/Vanilla%20Actor%20Critic/)
 
 - ### Advanced Deep Reinforcement Learning
   - **Synchronous Actor-Critic (A2C)**
