@@ -16,6 +16,8 @@ In this section, we'll explore traditional reinforcement learning methods for so
 - [Monte-Carlo](Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/monte_carlo.ipynb)
 - [SARSA](Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/sarsa.ipynb)
 - [Q-Learning](Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/q_learning.ipynb)
+- [TD(N)](Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/td_n.ipynb)
+- [TD(Lambda)](Intro%20to%20Reinforcement%20Learning/Model-Free%20Learning/td_lambda.ipynb)
   
 ## Deep Reinforcement Learning
 
@@ -37,3 +39,11 @@ Unlike traditional methods, neural networks can also handle continuous state and
 - [PER with SumTree](Intro%20to%20Deep%20Reinforcement%20Learning/Prioritized%20Experience%20Replay/sumtree_per.ipynb)
 
 
+**Deep Policy Estimation**
+- [Policy Networks (REINFORCE)](Deep%20RL%20Policy%20Models/Policy%20Networks%20\(REINFORCE\)/policy_networks.ipynb)
+- [REINFORCE w/ Baseline](Deep%20RL%20Policy%20Models/REINFORCE%20with%20Baseline/reinforce_with_baseline.ipynb)
+
+**Actor-Critic Methods**
+- [Vanilla Actor-Critic](Deep%20RL%20Policy%20Models/Vanilla%20Actor%20Critic/actor_critic.ipynb)
+- [A2C](Deep%20RL%20Policy%20Models/A2C/a2c.ipynb)
+- [TRPO](Deep%20RL%20Policy%20Models/Trust%20Region%20Policy%20Optimization/trpo.ipynb)

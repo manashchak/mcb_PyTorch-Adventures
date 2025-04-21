@@ -163,8 +163,7 @@ There are a few other datasets that we will use but are inconsistent to automati
 
 - ### Advanced Deep Reinforcement Learning
   - [**Synchronous Actor-Critic (A2C)**](PyTorch%20for%20Reinforcement%20Learning/Deep%20RL%20Policy%20Models/A2C/a2c.ipynb)
-
-  - **Trust Region Policy Optimization (TRPO)**
+  - [**Trust Region Policy Optimzation  (TRPO)**](PyTorch%20for%20Reinforcement%20Learning/Deep%20RL%20Policy%20Models/Trust%20Region%20Policy%20Optimization/trpo.ipynb)
   - **Proximal Policy Optimization (PPO)**
   - **Actor Critic w/ Experience Replay (ACER)**
   - **Actor-Critic using Kronecker-Factored Trust Region (ACKTR)**
