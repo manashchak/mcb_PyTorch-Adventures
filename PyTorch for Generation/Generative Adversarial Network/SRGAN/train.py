@@ -11,37 +11,46 @@ from tqdm import tqdm
 from model import SRNet, Discriminator
 from loss import VGGPerceptualLoss
 from dataset import SRImageDataset
-torch.autograd.set_detect_anomaly(True)
+
 accelerator = Accelerator()
 
 ### TRAINING CONFIG ###
-num_iterations = 150000
-save_gen_iters = 5000
+num_iterations = 100000
+save_gen_iters = 2500
 batch_size = 32
 image_size = 96
 num_workers = 32
 upsampling_factor = 4
 generator_lr = 1e-4
 discriminator_lr = 1e-4
-path_to_data = "/mnt/datadrive/data/ImageNet/train"
+path_to_train_data = "/mnt/datadrive/data/ImageNet/train"
+path_to_test_data = "/mnt/datadrive/data/ImageNet/validation"
 path_to_gens = "gens/"
-device = accelerator.device #"cuda" if torch.cuda.is_available() else "cpu"
+device = accelerator.device
 
 ### Data Prep ###
-dataset = SRImageDataset(root_dir=path_to_data, 
+dataset = SRImageDataset(root_dir=path_to_train_data, 
                          hr_size=image_size, 
                          scale_factor=upsampling_factor)
 
 dataloader = DataLoader(dataset, 
                         batch_size=batch_size, 
                         shuffle=True, 
-                        num_workers=num_workers)
+                        num_workers=num_workers,
+                        pin_memory=True)
+
+val_dataset = SRImageDataset(root_dir=path_to_test_data, 
+                             hr_size=image_size, 
+                             scale_factor=upsampling_factor, 
+                             train_transform=False)
+
+val_loader = iter(DataLoader(val_dataset, batch_size=1, shuffle=True))
 
 ### Load Models ###
 generator = SRNet().to(device)
 discriminator = Discriminator().to(device)
 
-### Convert Batchnorm to SyncBatchNorm ###
+### Convert Batchnorm to SyncBatchNorm (For MultiGPU Training) ###
 if accelerator.num_processes > 1:
     discriminator = nn.SyncBatchNorm.convert_sync_batchnorm(discriminator)
 
@@ -110,8 +119,7 @@ while train:
             generator.eval()
             discriminator.eval()
 
-            sample_lr_image = lr_images[0].unsqueeze(0)
-            sample_hr_image = hr_images[0].unsqueeze(0)
+            sample_hr_image, sample_lr_image = next(val_loader)
 
             with torch.no_grad():
                 gen_image = generator(sample_lr_image)

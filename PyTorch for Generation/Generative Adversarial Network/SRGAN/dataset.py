@@ -1,18 +1,15 @@
 from torch.utils.data import Dataset
 from torchvision import datasets, transforms
+import torch.nn.functional as F
 
 class SRImageDataset(Dataset):
-    def __init__(self, root_dir, hr_size=96, scale_factor=4):
+    def __init__(self, root_dir, hr_size=96, scale_factor=4, train_transform=True):
         self.dataset = datasets.ImageFolder(root_dir)
-        lr_size = hr_size // scale_factor
+        self.train = train_transform
+        self.lr_size = hr_size // scale_factor
 
-        self.hr_transform = transforms.Compose([
-            transforms.Resize((hr_size, hr_size), interpolation=transforms.InterpolationMode.BICUBIC),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ])
-        self.lr_transform = transforms.Compose([
-            transforms.Resize((lr_size,lr_size), interpolation=transforms.InterpolationMode.BICUBIC),
+        self.transform = transforms.Compose([
+            transforms.RandomResizedCrop((hr_size, hr_size)) if self.train else transforms.Resize((hr_size, hr_size)),
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
@@ -22,7 +19,14 @@ class SRImageDataset(Dataset):
 
     def __getitem__(self, idx):
         img, _ = self.dataset[idx]
-        hr_img = self.hr_transform(img)
-        lr_img = self.lr_transform(img)
-
+        hr_img = self.transform(img)
+        lr_img = F.interpolate(hr_img.unsqueeze(0), size=(self.lr_size, self.lr_size)).squeeze(0)
         return hr_img, lr_img
+    
+path_to_data = "/mnt/datadrive/data/ImageNet/train"
+
+dataset = SRImageDataset(path_to_data, train_transform=False)
+
+dataset = iter(dataset)
+hr, lr = next(dataset)
+hr, lr = next(dataset)
