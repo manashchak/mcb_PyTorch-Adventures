@@ -5,16 +5,18 @@ import torch.nn.functional as F
 from torch import optim
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
+from accelerate import Accelerator
 from tqdm import tqdm 
 
 from model import SRNet, Discriminator
 from loss import VGGPerceptualLoss
 from dataset import SRImageDataset
 torch.autograd.set_detect_anomaly(True)
+accelerator = Accelerator()
 
 ### TRAINING CONFIG ###
-num_iterations = 100000
-save_gen_iters = 1000
+num_iterations = 150000
+save_gen_iters = 5000
 batch_size = 32
 image_size = 96
 num_workers = 32
@@ -23,7 +25,7 @@ generator_lr = 1e-4
 discriminator_lr = 1e-4
 path_to_data = "/mnt/datadrive/data/ImageNet/train"
 path_to_gens = "gens/"
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = accelerator.device #"cuda" if torch.cuda.is_available() else "cpu"
 
 ### Data Prep ###
 dataset = SRImageDataset(root_dir=path_to_data, 
@@ -39,12 +41,20 @@ dataloader = DataLoader(dataset,
 generator = SRNet().to(device)
 discriminator = Discriminator().to(device)
 
+### Convert Batchnorm to SyncBatchNorm ###
+if accelerator.num_processes > 1:
+    discriminator = nn.SyncBatchNorm.convert_sync_batchnorm(discriminator)
+
 ### Load Perceptual Loss ###
 vgg_loss = VGGPerceptualLoss().to(device)
 
 ### Load Optimizers ###
 optimizer_g = optim.Adam(generator.parameters(), lr=generator_lr)
 optimizer_d = optim.Adam(discriminator.parameters(), lr=discriminator_lr)
+
+generator, discriminator, vgg_loss, optimizer_g, optimizer_g, dataloader = accelerator.prepare(
+    generator, discriminator, vgg_loss, optimizer_g, optimizer_g, dataloader
+)
 
 train = True
 completed_steps = 0
@@ -53,7 +63,7 @@ pbar = tqdm(range(num_iterations))
 while train:
 
     for hr_images, lr_images in dataloader:
-        
+  
         hr_images, lr_images = hr_images.to(device), lr_images.to(device)
 
         batch_size = hr_images.shape[0]
@@ -95,21 +105,22 @@ while train:
 
         ### Generate Images Every Save Steps ###
         if completed_steps % save_gen_iters == 0:
-            print("Saving Generation Sample")
+            accelerator.print("Saving Generation Sample")
 
             generator.eval()
             discriminator.eval()
 
-            with torch.no_grad():
+            sample_lr_image = lr_images[0].unsqueeze(0)
+            sample_hr_image = hr_images[0].unsqueeze(0)
 
-                sample_lr_image = lr_images[0].unsqueeze(0)
-                sample_hr_image = hr_images[0].unsqueeze(0)
+            with torch.no_grad():
                 gen_image = generator(sample_lr_image)
 
-                sample_lr_image = ((sample_lr_image * 0.5) + 0.5).squeeze(0).permute(1,2,0).cpu().numpy()
-                sample_hr_image = ((sample_hr_image * 0.5) + 0.5).squeeze(0).permute(1,2,0).cpu().numpy()
-                gen_image = ((gen_image * 0.5) + 0.5).squeeze(0).permute(1,2,0).cpu().numpy()
+            sample_lr_image = ((sample_lr_image * 0.5) + 0.5).squeeze(0).permute(1,2,0).cpu().numpy()
+            sample_hr_image = ((sample_hr_image * 0.5) + 0.5).squeeze(0).permute(1,2,0).cpu().numpy()
+            gen_image = ((gen_image * 0.5) + 0.5).squeeze(0).permute(1,2,0).cpu().numpy()
 
+            if accelerator.is_main_process:
                 # Create subplots with 1 row and 3 columns
                 fig, axes = plt.subplots(1, 3, figsize=(9, 3))
 
@@ -131,6 +142,8 @@ while train:
 
             generator.train()
             discriminator.train()
+
+        accelerator.wait_for_everyone()
 
         ### Iter Steps ###
         completed_steps += 1
