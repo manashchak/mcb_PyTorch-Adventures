@@ -64,7 +64,7 @@ There are a few other datasets that we will use but are inconsistent to automati
   
 ## Computer Vision ##
 
-- [**UNet for Image Segmentation**](PyTorch%20for%20Computer%20Vision/UNET%20for%20Segmentation/)
+- [**UNet for Image Segmentation**](PyTorch%20for%20Computer%20Vision/UNET%20for%20Segmentation/)&nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1936911862018556114)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://youtu.be/fBlLsugz6Q8) &nbsp;
 - [**Moving from Convolutions: Vision Transformer**](PyTorch%20for%20Computer%20Vision/Vision%20Transformer) &nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1Mh-yaSWwfTs1UcOdRQjRIvLuj6PU6liZ?usp=sharing)
 - [**Masked Image Modeling with Masked Autoencoders**](PyTorch%20for%20Computer%20Vision/Masked%20AutoEncoder/)
 - **PixelCNN**
