@@ -81,7 +81,7 @@ There are a few other datasets that we will use but are inconsistent to automati
 - [**Llama 4**](PyTorch%20for%20NLP/Llama4/)&nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1909095350197006780)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://youtu.be/yXbF-1n9wxs?feature=shared) &nbsp;
 
 ## Audio Processing ##
-- [**Intro to Audio Processing in PyTorch**](PyTorch%20for%20Audio/Intro%20to%20Audio%20Processing/)&nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1qjE2YCRvSI3JtH6To-fCvtZNiegfnFoT?usp=sharing)
+- [**Intro to Audio Processing in PyTorch**](PyTorch%20for%20Audio/Intro%20to%20Audio%20Processing/)&nbsp; [<img src="src/visuals/x_logo.png" alt="drawing" style="width:20px;"/>](https://x.com/data_adventurer/status/1938310616974037242)&nbsp; [<img src="src/visuals/play_button.png" alt="drawing" style="width:30px;"/>](https://youtu.be/55QWsm1itKo) &nbsp;[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1qjE2YCRvSI3JtH6To-fCvtZNiegfnFoT?usp=sharing)
 - **Audio Processing From Scratch**
 - [**Connectionist Temporal Classification Loss**](PyTorch%20for%20Audio/Connectionist%20Temporal%20Classification/)
 - [**Intro to Automatic Speech Recognition**](PyTorch%20for%20Audio/Intro%20to%20Automatic%20Speech%20Recognition/) &nbsp; [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1XmHksCjSuTVbfl-URTNgiuDs2s3_jnd9?usp=sharing)
